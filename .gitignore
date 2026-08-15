@@ -1,0 +1,11 @@
+# Local credentials. Copy .env.example to .env before `make up`.
+.env
+
+# Bind-mounted service data (see README: images/ naming plan).
+images/*/data/
+images/*/work/
+images/*/state/
+
+*.duckdb
+*.duckdb.wal
+.DS_Store

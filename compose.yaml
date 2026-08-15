@@ -1,0 +1,150 @@
+# The lakehouse as one compose service: MinIO (Parquet objects), Postgres +
+# Lakekeeper (Iceberg REST catalog), and DuckDB (query engine). `docker
+# compose up -d` brings up the stores and runs the one-shot init jobs; DuckDB
+# is an on-demand client behind the `client` and `test` profiles.
+#
+# Images are defined in ../../Dockerfiles/lakehouse-*; persistent data is
+# bind-mounted from ./images (see README for the naming plan).
+
+name: lakehouse
+
+services:
+  minio:
+    build: ../../Dockerfiles/lakehouse-minio
+    image: lakehouse/minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    volumes:
+      - ./images/minio/data:/data
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # web console
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 2s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # One-shot: warehouse bucket + the non-root user Lakekeeper vends STS
+  # credentials with (MinIO refuses AssumeRole for root).
+  minio-init:
+    build: ../../Dockerfiles/lakehouse-mc
+    image: lakehouse/mc
+    restart: "no"
+    entrypoint: ["/bin/sh", "/opt/lakehouse/scripts/minio-init.sh"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      LAKEHOUSE_S3_ACCESS_KEY: ${LAKEHOUSE_S3_ACCESS_KEY:?}
+      LAKEHOUSE_S3_SECRET_KEY: ${LAKEHOUSE_S3_SECRET_KEY:?}
+      LAKEHOUSE_BUCKET: ${LAKEHOUSE_BUCKET:?}
+    volumes:
+      - ./scripts:/opt/lakehouse/scripts:ro
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  postgres:
+    build: ../../Dockerfiles/lakehouse-postgres
+    image: lakehouse/postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - ./images/postgres/data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  lakekeeper-migrate:
+    build: ../../Dockerfiles/lakehouse-lakekeeper
+    image: lakehouse/lakekeeper
+    restart: "no"
+    command: ["migrate"]
+    environment: &lakekeeper-env
+      LAKEKEEPER__PG_ENCRYPTION_KEY: ${LAKEKEEPER_PG_ENCRYPTION_KEY:?}
+      LAKEKEEPER__PG_DATABASE_URL_READ: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      LAKEKEEPER__PG_DATABASE_URL_WRITE: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      RUST_LOG: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  lakekeeper:
+    build: ../../Dockerfiles/lakehouse-lakekeeper
+    image: lakehouse/lakekeeper
+    command: ["serve"]
+    environment: *lakekeeper-env
+    ports:
+      - "8181:8181" # REST catalog + management API + UI
+    healthcheck:
+      test: ["CMD", "/home/nonroot/lakekeeper", "healthcheck"]
+      interval: 2s
+      timeout: 10s
+      retries: 5
+      start_period: 5s
+    depends_on:
+      lakekeeper-migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  # One-shot: bootstrap the catalog and create the warehouse on MinIO.
+  lakekeeper-init:
+    build: ../../Dockerfiles/lakehouse-duckdb
+    image: lakehouse/duckdb
+    restart: "no"
+    command: ["bash", "/opt/lakehouse/scripts/lakekeeper-init.sh"]
+    environment:
+      LAKEHOUSE_WAREHOUSE: ${LAKEHOUSE_WAREHOUSE:?}
+      LAKEHOUSE_BUCKET: ${LAKEHOUSE_BUCKET:?}
+      LAKEHOUSE_S3_ACCESS_KEY: ${LAKEHOUSE_S3_ACCESS_KEY:?}
+      LAKEHOUSE_S3_SECRET_KEY: ${LAKEHOUSE_S3_SECRET_KEY:?}
+    volumes:
+      - ./scripts:/opt/lakehouse/scripts:ro
+    depends_on:
+      lakekeeper:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  # Interactive SQL shell: `docker compose run --rm duckdb`.
+  duckdb:
+    build: ../../Dockerfiles/lakehouse-duckdb
+    image: lakehouse/duckdb
+    profiles: ["client"]
+    command: ["duckdb", "-init", "/opt/lakehouse/sql/attach.sql"]
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./sql:/opt/lakehouse/sql:ro
+      - ./images/duckdb/work:/work
+    depends_on:
+      lakekeeper:
+        condition: service_healthy
+      lakekeeper-init:
+        condition: service_completed_successfully
+
+  # End-to-end check: writes an Iceberg table through the catalog into MinIO
+  # and reads it back. `docker compose run --rm smoke-test`.
+  smoke-test:
+    build: ../../Dockerfiles/lakehouse-duckdb
+    image: lakehouse/duckdb
+    profiles: ["test"]
+    restart: "no"
+    command: ["bash", "/opt/lakehouse/scripts/smoke-test.sh"]
+    volumes:
+      - ./scripts:/opt/lakehouse/scripts:ro
+      - ./sql:/opt/lakehouse/sql:ro
+    depends_on:
+      lakekeeper:
+        condition: service_healthy
+      lakekeeper-init:
+        condition: service_completed_successfully

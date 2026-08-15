@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/* NQ Lake console tokens: white surfaces, blue accent, status colors
+   reserved for state. Light-only by design. */
+:root {
+  --background: #f6f8fb;
+  --surface: #ffffff;
+  --line: #e2e8f0;
+  --ink: #0f172a;
+  --ink-2: #475569;
+  --ink-3: #94a3b8;
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-weak: #eff6ff;
+  --ok: #15803d;
+  --ok-weak: #f0fdf4;
+  --warn: #b45309;
+  --warn-weak: #fffbeb;
+  --err: #b91c1c;
+  --err-weak: #fef2f2;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-weak: var(--accent-weak);
+  --color-ok: var(--ok);
+  --color-ok-weak: var(--ok-weak);
+  --color-warn: var(--warn);
+  --color-warn-weak: var(--warn-weak);
+  --color-err: var(--err);
+  --color-err-weak: var(--err-weak);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--ink);
+}

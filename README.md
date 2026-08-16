@@ -1,4 +1,15 @@
-# NQ Lake
+<img src="https://capsule-render.vercel.app/api?type=waving&height=400&text=NQ%20Lake&fontAlign=80&fontAlignY=40&color=gradient" />
+
+<p align="center">
+  <img alt="Apache Iceberg" src="https://img.shields.io/badge/Apache-Iceberg-1F6FEB?logo=apacheiceberg&logoColor=white" />
+  <img alt="DuckDB 1.5.5" src="https://img.shields.io/badge/DuckDB-1.5.5-FFF000?logo=duckdb&logoColor=black" />
+  <img alt="MinIO" src="https://img.shields.io/badge/MinIO-S3%20storage-C72E49?logo=minio&logoColor=white" />
+  <img alt="Postgres 17" src="https://img.shields.io/badge/Postgres-17-4169E1?logo=postgresql&logoColor=white" />
+  <img alt="Docker Compose" src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" />
+  <img alt="Console: Next.js" src="https://img.shields.io/badge/console-Next.js-000000?logo=nextdotjs&logoColor=white" />
+</p>
+
+Project of NowQuant.
 
 A self-contained Iceberg lakehouse: Parquet files in object storage, an
 Iceberg REST catalog on Postgres, and DuckDB as the query engine — one
@@ -142,3 +153,29 @@ host.
   the dedicated `lakekeeper` user that the warehouse is registered with.
 - Renaming the warehouse means changing both `LAKEHOUSE_WAREHOUSE` in `.env`
   and the `ATTACH` line in `sql/attach.sql`.
+
+## Releases
+
+### 2026-08-15
+
+The first working stack: `make up` brings up storage, catalog, and both
+clients, and `make smoke` writes and reads an Iceberg table end to end.
+
+- **The stack** — MinIO for objects, Postgres 17 for catalog metadata,
+  Lakekeeper v0.13.1 as the Iceberg REST catalog, DuckDB v1.5.5 as the query
+  engine, wired by one compose file. Images are pinned in the parent repository
+  under `Dockerfiles/lakehouse-*`.
+- **Credential vending, not shared secrets.** Lakekeeper hands DuckDB
+  short-lived MinIO STS credentials per table access, so no client holds an S3
+  secret. `minio-init` creates a dedicated `lakekeeper` user for this because
+  MinIO refuses `AssumeRole` for root credentials.
+- **Idempotent bring-up.** `make up` re-runs provisioning and bootstrap on
+  every invocation and converges, so it is safe to repeat against a live stack.
+- **One command surface, two front ends.** `scripts/console/nqlake.py` prints
+  tables on a TTY and JSON when piped, so the same commands serve humans,
+  scripts, and the Next.js console's API routes.
+- **`load` infers schemas.** CSV/TSV/Parquet/JSON(L), optionally gzipped; the
+  first load creates the namespace and table, later loads append by column
+  name, `--replace` rebuilds.
+- Data lives in `images/` as bind mounts and survives `make down`. Only
+  `make clean` deletes it.

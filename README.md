@@ -101,17 +101,91 @@ scripts:
 | `ops --action …` | start/stop/restart/stack-up/stack-stop/smoke |
 | `logs --service …` | tail a service's logs |
 
-Loading data:
+Every `query` and `load` starts a throwaway DuckDB container, which costs
+about four seconds before any work begins — put several statements into one
+`--sql` rather than issuing several calls.
+
+### Common operations
+
+**Check the stack.** `status` is the one to run after `make up` or when
+something looks wrong; `stats` answers "how big is it now".
 
 ```bash
-make load FILE=trades.csv TABLE=market.trades
-# equivalently:
-python3 scripts/console/nqlake.py load --file trades.csv --table market.trades
+make status
+python3 scripts/console/nqlake.py --pretty stats
 ```
 
-`load` accepts CSV/TSV/Parquet/JSON(L), also gzipped. First load creates the
-namespace and table (schema inferred); later loads append by column name;
-`--replace` rebuilds the table.
+**Load a file.** The first load creates the namespace and table with an
+inferred schema, later loads append by column name, and `--replace` rebuilds
+the table from scratch.
+
+```bash
+make load FILE=~/data/trades-2026-08.csv TABLE=market.trades
+python3 scripts/console/nqlake.py load --file quotes.parquet --table market.quotes
+python3 scripts/console/nqlake.py load --file trades.csv --table market.trades --replace
+```
+
+CSV/TSV/Parquet/JSON(L), optionally gzipped. The file may live anywhere on the
+host — `load` stages it through `images/duckdb/work` and removes the copy
+afterwards.
+
+**Load many files at once.** One `load` per file pays the container startup
+every time. Stage them under `images/duckdb/work` (mounted at `/work`) and let
+DuckDB glob them in a single statement instead:
+
+```bash
+cp ~/data/trades-2026-*.csv.gz images/duckdb/work/
+python3 scripts/console/nqlake.py --pretty query --sql "
+  CREATE SCHEMA IF NOT EXISTS lake.market;
+  CREATE TABLE lake.market.trades AS SELECT * FROM '/work/trades-2026-*.csv.gz';"
+```
+
+**Inspect a table** — schema, snapshot count, current row count, and where it
+sits in the bucket:
+
+```bash
+python3 scripts/console/nqlake.py --pretty catalog
+python3 scripts/console/nqlake.py --pretty catalog --table market.trades
+```
+
+**Query.** `--limit` caps the rows returned (default 500, the full count is
+still reported), `--timeout` the wall clock (default 90 s).
+
+```bash
+python3 scripts/console/nqlake.py --pretty query --limit 20 --sql \
+  "SELECT sym, count(*) AS n, avg(px) AS px FROM lake.market.trades GROUP BY sym ORDER BY n DESC"
+```
+
+**Export a result.** `/work` in the container is `images/duckdb/work` on the
+host, so anything written there is immediately at hand:
+
+```bash
+python3 scripts/console/nqlake.py --pretty query --sql \
+  "COPY (SELECT * FROM lake.market.trades WHERE ts >= '2026-08-01') TO '/work/aug.parquet';"
+ls -lh images/duckdb/work/aug.parquet
+```
+
+**Script against it.** Piped output is a single JSON object, so health checks
+and row counts compose with `jq`:
+
+```bash
+python3 scripts/console/nqlake.py status | jq -e '.links["lakekeeper-minio"].ok'
+python3 scripts/console/nqlake.py query --sql "SELECT count(*) AS n FROM lake.market.trades" \
+  | jq '.rows[0].n'
+```
+
+**Operate the services.** `ops` takes start/stop/restart/stack-up/stack-stop/
+smoke; the per-service actions need `--service`.
+
+```bash
+python3 scripts/console/nqlake.py --pretty ops --action restart --service lakekeeper
+python3 scripts/console/nqlake.py --pretty logs --service minio --tail 50
+make down    # stop; data survives in images/
+make clean   # stop and DELETE every object plus the catalog database
+```
+
+`make smoke` writes and reads a table under the `smoke` namespace — useful
+against a scratch stack, but it leaves that data behind.
 
 ### SQL shell
 

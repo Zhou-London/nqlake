@@ -62,6 +62,7 @@ scripts/console/    nqlake.py  CLI entry: argument parsing + table/JSON output
                     data.py    catalog browsing, DuckDB query, file loading
 sql/attach.sql      attaches the catalog as `lake` in every DuckDB client
 ui/                 NQ Lake console (Next.js); API routes shell out to nqlake.py
+                    (see ui/README.md)
 images/             bind-mounted service state (gitignored), one dir per service:
   minio/data/         bucket contents — the actual Parquet + metadata files
   postgres/data/      catalog database
@@ -84,6 +85,7 @@ images/             bind-mounted service state (gitignored), one dir per service
 
 Needs only Node and Docker; all data comes through `nqlake.py`. The console
 executes admin operations and arbitrary SQL — keep it on localhost.
+[`ui/README.md`](ui/README.md) documents its routes, polling, and timeouts.
 
 ### Command line
 

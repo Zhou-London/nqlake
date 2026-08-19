@@ -18,6 +18,7 @@ scripts/            minio-init.sh, lakekeeper-init.sh, smoke-test.sh
 scripts/console/    nqlake.py (CLI + console backend), stack.py, data.py
 sql/attach.sql      attaches the catalog as `lake` in every DuckDB client
 ui/                 the console (Next.js); its API routes shell out to nqlake.py
+                    (ui/README.md documents its shape)
 images/             bind-mounted service data, gitignored
 ```
 

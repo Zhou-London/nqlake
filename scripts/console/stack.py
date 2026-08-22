@@ -13,9 +13,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-LAKEKEEPER = "http://localhost:8181"
-MINIO = "http://localhost:9000"
+import ports
+
+ROOT = ports.ROOT
 PROJECT_ID = "00000000-0000-0000-0000-000000000000"
 STATE_DIR = ROOT / "images" / "console" / "state"
 
@@ -27,13 +27,17 @@ ONESHOTS = ("minio-init", "lakekeeper-migrate", "lakekeeper-init")
 
 def env() -> dict:
     """Parses KEY=VALUE pairs from the stack's .env file."""
-    out = {}
-    for line in (ROOT / ".env").read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            key, _, value = line.partition("=")
-            out[key] = value
-    return out
+    return ports.read_env()
+
+
+def lakekeeper_url(conf=None) -> str:
+    """Base URL of Lakekeeper on the host, on its configured port."""
+    return f"http://localhost:{ports.value('LAKEKEEPER_PORT', conf)}"
+
+
+def minio_url(conf=None) -> str:
+    """Base URL of the MinIO S3 API on the host, on its configured port."""
+    return f"http://localhost:{ports.value('MINIO_API_PORT', conf)}"
 
 
 def sh(args, timeout=30, check=False):
@@ -88,6 +92,7 @@ def compose_ps() -> dict:
             "exitCode": row.get("ExitCode"),
             "id": row.get("ID"),
             "name": row.get("Name"),
+            "publishers": row.get("Publishers") or [],
         }
     return services
 
@@ -107,14 +112,15 @@ def write_state(name, value):
 def status():
     conf = env()
     ps = compose_ps()
+    lakekeeper = lakekeeper_url(conf)
 
-    info = http_json(f"{LAKEKEEPER}/management/v1/info")
-    health = http_json(f"{LAKEKEEPER}/health")
+    info = http_json(f"{lakekeeper}/management/v1/info")
+    health = http_json(f"{lakekeeper}/health")
     warehouses = http_json(
-        f"{LAKEKEEPER}/management/v1/warehouse?project-id={PROJECT_ID}"
+        f"{lakekeeper}/management/v1/warehouse?project-id={PROJECT_ID}"
     )
     warehouse = (warehouses or {}).get("warehouses", [None])[0] if warehouses else None
-    minio_live = http_ok(f"{MINIO}/minio/health/live")
+    minio_live = http_ok(f"{minio_url(conf)}/minio/health/live")
 
     rc, _, _ = compose(
         "exec", "-T", "postgres", "pg_isready",
@@ -249,12 +255,13 @@ def stats():
     }
 
     warehouse_stats = None
+    lakekeeper = lakekeeper_url(conf)
     warehouses = http_json(
-        f"{LAKEKEEPER}/management/v1/warehouse?project-id={PROJECT_ID}"
+        f"{lakekeeper}/management/v1/warehouse?project-id={PROJECT_ID}"
     )
     if warehouses and warehouses.get("warehouses"):
         wid = warehouses["warehouses"][0]["id"]
-        raw = http_json(f"{LAKEKEEPER}/management/v1/warehouse/{wid}/statistics")
+        raw = http_json(f"{lakekeeper}/management/v1/warehouse/{wid}/statistics")
         if raw:
             warehouse_stats = [
                 {
@@ -266,7 +273,7 @@ def stats():
             ]
 
     api = http_json(
-        f"{LAKEKEEPER}/management/v1/endpoint-statistics",
+        f"{lakekeeper}/management/v1/endpoint-statistics",
         body={"warehouse": {"type": "all"}},
     )
     api_series, api_routes = [], {}

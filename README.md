@@ -40,7 +40,8 @@ this directory holds everything else.
 cp .env.example .env   # then set the passwords; .env is gitignored
 make up      # start stores + catalog, run init jobs (bucket, user, warehouse)
 make smoke   # end-to-end check: write + read an Iceberg table
-make console # web console on http://localhost:3000
+make ports   # the port each component binds, and whether the stack matches
+make console # web console on the console port from .env (3000 by default)
 make down    # stop; data survives in images/
 make clean   # stop and DELETE all data
 ```
@@ -54,13 +55,15 @@ the services running.
 compose.yaml        the whole service: minio → minio-init → postgres
                     → lakekeeper-migrate → lakekeeper → lakekeeper-init
 .env.example        credential/name template; copy to .env (gitignored)
-Makefile            command surface (up/down/sql/status/load/console/…)
+Makefile            command surface (up/down/sql/status/load/ports/console/…)
 scripts/            minio-init.sh, lakekeeper-init.sh (idempotent init jobs),
-                    smoke-test.sh
+                    smoke-test.sh, duckdb-entrypoint.sh (renders the attach SQL)
 scripts/console/    nqlake.py  CLI entry: argument parsing + table/JSON output
                     stack.py   compose/env/HTTP helpers; status/stats/ops/logs
                     data.py    catalog browsing, DuckDB query, file loading
-sql/attach.sql      attaches the catalog as `lake` in every DuckDB client
+                    ports.py   the .env port registry: read, validate, write
+sql/                attach.sql.template — rendered per client, attaches the
+                    catalog as `lake`
 ui/                 NQ Lake console (Next.js); API routes shell out to nqlake.py
                     (see ui/README.md)
 images/             bind-mounted service state (gitignored), one dir per service:
@@ -74,13 +77,16 @@ images/             bind-mounted service state (gitignored), one dir per service
 
 ### Web console
 
-`make console` → http://localhost:3000. Four pages:
+`make console` → the console port from `.env` (http://localhost:3000 unless
+you moved it). Five pages:
 
 - **Overview** — per-component health, CPU/memory sparklines, coordination
   links (Lakekeeper↔Postgres, Lakekeeper↔MinIO, DuckDB↔stack), storage and
   catalog-API activity
 - **Catalog** — namespaces, table schema/snapshots, row preview
 - **SQL** — DuckDB against the catalog
+- **Ports** — the port each component binds, whether the running stack still
+  matches, and an edit that writes the new value to `.env`
 - **Operations** — start/stop/restart services, stack up, smoke test, logs
 
 Needs only Node and Docker; all data comes through `nqlake.py`. The console
@@ -100,6 +106,7 @@ scripts:
 | `catalog [--table ns.t]` | list namespaces/tables, or schema + snapshots of one |
 | `query --sql "…"` | run SQL via DuckDB, catalog attached as `lake` |
 | `load --file f --table ns.t [--replace]` | load a data file into an Iceberg table |
+| `ports [--set KEY=PORT]` | show the stack's ports, or reassign one (`make ports`) |
 | `ops --action …` | start/stop/restart/stack-up/stack-stop/smoke |
 | `logs --service …` | tail a service's logs |
 
@@ -176,6 +183,23 @@ python3 scripts/console/nqlake.py query --sql "SELECT count(*) AS n FROM lake.ma
   | jq '.rows[0].n'
 ```
 
+**Move a port.** Every port the stack binds is a variable in `.env`, and one
+number serves both sides — what a service listens on and what it publishes.
+`ports` shows them and reassigns them; a value that is out of range, collides
+with another component, or is already taken on the host is refused rather than
+written.
+
+```bash
+make ports   # VARIABLE, SERVICE, PORT, STATE (live / restart / -), WHAT
+python3 scripts/console/nqlake.py --pretty ports --set MINIO_API_PORT=9100
+make up      # recreates the services whose mapping moved
+```
+
+MinIO is the one with state behind it: its address is stored in the
+warehouse's storage profile, so `lakekeeper-init` writes the new endpoint back
+on the next `make up`. Moving `CONSOLE_PORT` needs `make console` restarted
+instead of the stack.
+
 **Operate the services.** `ops` takes start/stop/restart/stack-up/stack-stop/
 smoke; the per-service actions need `--service`.
 
@@ -206,20 +230,22 @@ Every write becomes Parquet + Iceberg metadata under
 ### Other engines
 
 Any Iceberg client (PyIceberg, Spark, Trino, …) can attach the same catalog
-at `http://localhost:8181/catalog` (no auth) and read/write the same tables.
+at `http://localhost:8181/catalog` (no auth, or wherever `LAKEKEEPER_PORT`
+now points) and read/write the same tables.
 
 ## Endpoints and credentials
 
-| Port | What |
-|---|---|
-| 3000 | NQ Lake console (`make console`) |
-| 8181 | Lakekeeper: REST catalog `/catalog`, management `/management`, UI `/ui` |
-| 9000 | MinIO S3 API |
-| 9001 | MinIO web console |
+| Variable | Default | What |
+|---|---|---|
+| `CONSOLE_PORT` | 3000 | NQ Lake console (`make console`) |
+| `LAKEKEEPER_PORT` | 8181 | Lakekeeper: REST catalog `/catalog`, management `/management`, UI `/ui` |
+| `MINIO_API_PORT` | 9000 | MinIO S3 API |
+| `MINIO_CONSOLE_PORT` | 9001 | MinIO web console |
+| `POSTGRES_PORT` | 5432 | catalog database |
 
-Credentials live in `.env`, which is gitignored — see
-[.env.example](.env.example) for the keys. Postgres is not published to the
-host.
+The defaults are what `.env.example` carries; `make ports` shows what this
+stack is actually on. Credentials live in `.env`, which is gitignored — see
+[.env.example](.env.example) for the keys.
 
 ## Notes
 
@@ -227,10 +253,35 @@ host.
   credentials to DuckDB per table access — clients need no S3 secret.
 - MinIO refuses `AssumeRole` for root credentials, so `minio-init` creates
   the dedicated `lakekeeper` user that the warehouse is registered with.
-- Renaming the warehouse means changing both `LAKEHOUSE_WAREHOUSE` in `.env`
-  and the `ATTACH` line in `sql/attach.sql`.
+- No DuckDB client carries the catalog address or the warehouse name:
+  `scripts/duckdb-entrypoint.sh` renders `sql/attach.sql.template` from the
+  environment at container start, so renaming the warehouse or moving the
+  catalog port is a `.env` edit and nothing else.
 
 ## Releases
+
+### 2026-08-22
+
+Every port the stack binds became configurable, and nothing in the repository
+writes one down twice.
+
+- **Ports live in `.env`.** `MINIO_API_PORT`, `MINIO_CONSOLE_PORT`,
+  `LAKEKEEPER_PORT`, `POSTGRES_PORT`, and `CONSOLE_PORT` are read by
+  `compose.yaml`, the init scripts, the Makefile, and the CLI alike, and one
+  number serves both what a service listens on and what it publishes. A port
+  literal anywhere else is now a bug.
+- **`ports`, on both front ends.** `make ports` and the console's new Ports
+  page show the configured value, what the running stack publishes, and where
+  the two have drifted; `--set KEY=PORT` writes a new value after checking it
+  is in range, unclaimed by another component, and free on the host.
+- **The catalog follows MinIO.** MinIO's address is stored in the warehouse's
+  storage profile, so `lakekeeper-init` now compares the two and repoints an
+  existing warehouse instead of leaving it vending credentials for a dead
+  address.
+- **The attach SQL is a template.** `scripts/duckdb-entrypoint.sh` renders
+  `sql/attach.sql.template` into `/tmp/attach.sql` at container start, filling
+  in the warehouse name and catalog endpoint from the environment, so no
+  DuckDB client carries either.
 
 ### 2026-08-15
 

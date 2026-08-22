@@ -3,7 +3,7 @@
 # Lakekeeper uses for S3 access and STS vending. Idempotent.
 set -eu
 
-mc alias set lake http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
+mc alias set lake "http://minio:$MINIO_API_PORT" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
 
 mc mb --ignore-existing "lake/$LAKEHOUSE_BUCKET"
 

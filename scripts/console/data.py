@@ -14,7 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
-from stack import LAKEKEEPER, ROOT, compose, http_json
+from stack import ROOT, compose, env, http_json, lakekeeper_url
 
 WORK_DIR = ROOT / "images" / "duckdb" / "work"
 
@@ -27,10 +27,13 @@ LOADABLE = (".csv", ".csv.gz", ".tsv", ".tsv.gz", ".parquet",
 
 def _catalog_base():
     """Base URL of the warehouse's REST catalog, or None if unreachable."""
-    config = http_json(f"{LAKEKEEPER}/catalog/v1/config?warehouse=lakehouse")
+    conf = env()
+    lakekeeper = lakekeeper_url(conf)
+    warehouse = conf["LAKEHOUSE_WAREHOUSE"]
+    config = http_json(f"{lakekeeper}/catalog/v1/config?warehouse={warehouse}")
     if not config:
         return None
-    return f"{LAKEKEEPER}/catalog/v1/{config['defaults']['prefix']}"
+    return f"{lakekeeper}/catalog/v1/{config['defaults']['prefix']}"
 
 
 def _namespaces(base):
@@ -145,7 +148,7 @@ def _duckdb(sql, timeout):
     try:
         rc, out, err = compose(
             "run", "--rm", "-T", "duckdb",
-            "duckdb", "-init", "/opt/lakehouse/sql/attach.sql", "-json",
+            "duckdb", "-init", "/tmp/attach.sql", "-json",
             "-c", sql,
             timeout=timeout,
         )

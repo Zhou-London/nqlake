@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """NQ Lake command-line tool and console backend.
 
-Subcommands live in stack.py (status/stats/ops/logs) and data.py
-(catalog/query/load); this file parses arguments and renders results. Output
+Subcommands live in stack.py (status/stats/ops/logs), data.py
+(catalog/query/load), and ports.py (ports); this file parses arguments and
+renders results. Output
 is a human-readable table on a TTY and one JSON object otherwise (the
 console's API routes pass --json explicitly). Failures are reported as
 "ok": false in JSON mode and a nonzero exit in pretty mode.
@@ -14,6 +15,7 @@ import sys
 from datetime import datetime
 
 import data
+import ports
 import stack
 
 
@@ -139,6 +141,40 @@ def _render_logs(result):
     print("\n".join(result.get("lines") or []))
 
 
+# What has to be restarted before a changed port takes effect.
+RESTART_HINT = {
+    "stack": "`make up` recreates the containers on the new ports",
+    "console": "restart `make console` to move the console itself",
+}
+
+
+def _render_ports(result):
+    rows = [
+        (
+            p["key"],
+            p["service"],
+            "?" if p["value"] is None else p["value"],
+            "restart" if p["pending"] else "live" if p["running"] else "-",
+            p["label"],
+        )
+        for p in result["ports"]
+    ]
+    print(_table(("VARIABLE", "SERVICE", "PORT", "STATE", "WHAT"), rows))
+    for entry in result["ports"]:
+        if entry.get("error"):
+            print(f"\n{entry['error']}")
+    changed = result.get("changed") or []
+    if changed:
+        print()
+        for change in changed:
+            print(f"{change['key']}: {change['from'] or 'unset'} -> {change['to']}")
+    restart = result.get("restart") or sorted(
+        {p["applies"] for p in result["ports"] if p["pending"]}
+    )
+    for target in restart:
+        print(RESTART_HINT[target])
+
+
 RENDERERS = {
     "status": _render_status,
     "stats": _render_stats,
@@ -147,7 +183,23 @@ RENDERERS = {
     "load": _render_load,
     "ops": _render_ops,
     "logs": _render_logs,
+    "ports": _render_ports,
 }
+
+
+def _port_updates(pairs):
+    """Parses `KEY=PORT` arguments into a mapping.
+
+    Raises:
+        ValueError: An argument is not of the form KEY=PORT.
+    """
+    updates = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not sep or not key.strip():
+            raise ValueError(f"--set expects KEY=PORT, got {pair!r}")
+        updates[key.strip()] = value.strip()
+    return updates
 
 
 # --- entrypoint ------------------------------------------------------------
@@ -185,6 +237,10 @@ def main():
                    choices=["start", "stop", "restart", "stack-up", "stack-stop", "smoke"])
     p.add_argument("--service", choices=list(stack.SERVICES))
 
+    p = sub.add_parser("ports", help="show or change the ports the stack binds")
+    p.add_argument("--set", action="append", default=[], metavar="KEY=PORT",
+                   help="assign a port, e.g. --set MINIO_API_PORT=9100 (repeatable)")
+
     p = sub.add_parser("logs", help="tail a service's logs")
     p.add_argument("--service", required=True)
     p.add_argument("--tail", type=int, default=200)
@@ -196,6 +252,9 @@ def main():
         "stats": lambda: stack.stats(),
         "ops": lambda: stack.ops(args.action, args.service),
         "logs": lambda: stack.logs(args.service, args.tail),
+        "ports": lambda: (
+            ports.apply(_port_updates(args.set)) if args.set else ports.listing()
+        ),
         "catalog": lambda: data.catalog(args.table),
         "query": lambda: data.query(args.sql, args.limit, args.timeout),
         "load": lambda: data.load(args.file, args.table, args.replace, args.timeout),

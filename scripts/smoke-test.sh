@@ -4,7 +4,7 @@
 # table. Fails loudly on any mismatch.
 set -euo pipefail
 
-result=$(duckdb -init /opt/lakehouse/sql/attach.sql -noheader -list -c "
+result=$(duckdb -init /tmp/attach.sql -noheader -list -c "
 CREATE SCHEMA IF NOT EXISTS lake.smoke;
 DROP TABLE IF EXISTS lake.smoke.trades;
 CREATE TABLE lake.smoke.trades (ts TIMESTAMP, sym VARCHAR, px DOUBLE, qty BIGINT);
@@ -21,5 +21,5 @@ if [[ "$result" != "3|136947.5" ]]; then
     exit 1
 fi
 
-duckdb -init /opt/lakehouse/sql/attach.sql -c "DROP TABLE lake.smoke.trades;"
+duckdb -init /tmp/attach.sql -c "DROP TABLE lake.smoke.trades;"
 echo "smoke-test: OK"

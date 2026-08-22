@@ -38,6 +38,18 @@ const NAV = [
     ),
   },
   {
+    href: "/ports",
+    label: "Ports",
+    icon: (
+      <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth={1.6}>
+        <path d="M3 6h14M3 10h14M3 14h14" strokeLinecap="round" />
+        <circle cx="7" cy="6" r="1.6" fill="currentColor" stroke="none" />
+        <circle cx="13" cy="10" r="1.6" fill="currentColor" stroke="none" />
+        <circle cx="8.5" cy="14" r="1.6" fill="currentColor" stroke="none" />
+      </svg>
+    ),
+  },
+  {
     href: "/ops",
     label: "Operations",
     icon: (

@@ -86,3 +86,34 @@ export interface LogsPayload {
   service?: string;
   lines?: string[];
 }
+
+export interface PortEntry {
+  key: string;
+  service: string;
+  label: string;
+  description: string;
+  applies: "stack" | "console";
+  url: string | null;
+  value: number | null;
+  error?: string;
+  /** Host ports the service publishes right now; null when it is not running. */
+  live: number[] | null;
+  running: boolean;
+  /** The service runs on ports other than the ones .env now asks for. */
+  pending: boolean;
+  inUse: boolean;
+}
+
+export interface PortsPayload {
+  ok: boolean;
+  error?: string;
+  ports: PortEntry[];
+  changed?: {
+    key: string;
+    /** null when .env did not carry the variable yet. */
+    from: number | null;
+    to: number;
+    applies: "stack" | "console";
+  }[];
+  restart?: ("stack" | "console")[];
+}

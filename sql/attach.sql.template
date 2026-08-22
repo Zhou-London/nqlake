@@ -1,0 +1,15 @@
+-- Attaches the lakehouse catalog. Rendered into /tmp/attach.sql by
+-- scripts/duckdb-entrypoint.sh, which every DuckDB client loads with
+-- `duckdb -init`: the warehouse name and the catalog port come from .env, so
+-- neither is written down twice.
+--
+-- The catalog runs without auth, and Lakekeeper vends short-lived MinIO
+-- credentials per table, so no S3 secret is needed.
+LOAD httpfs;
+LOAD iceberg;
+
+ATTACH '@WAREHOUSE@' AS lake (
+    TYPE iceberg,
+    ENDPOINT '@CATALOG_ENDPOINT@',
+    AUTHORIZATION_TYPE 'none'
+);

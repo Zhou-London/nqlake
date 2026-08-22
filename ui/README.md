@@ -6,7 +6,7 @@ the same numbers and run the same operations.
 
 ```bash
 npm install
-npm run dev     # http://localhost:3000, equivalently `make console` one level up
+npm run dev     # `make console` one level up serves it on CONSOLE_PORT from .env
 npm run build && npm run start   # production build, `make console-build`
 ```
 
@@ -20,10 +20,12 @@ rendered as absent rather than as an error.
 lib/nqlake.ts             runs nqlake.py --json in a subprocess, resolves its JSON
 lib/client.ts             usePoll (polling fetch hook), postJson, byte/time formatters
 lib/types.ts              the payload shapes nqlake.py returns
-app/api/*/route.ts        one route per subcommand: status, stats, catalog, query, ops, logs
+app/api/*/route.ts        one route per subcommand: status, stats, catalog, query,
+                          ports, ops, logs
 app/page.tsx              Overview: component health, coordination links, sparklines
 app/catalog/page.tsx      Catalog: namespaces, table schema and snapshots, row preview
 app/sql/page.tsx          SQL: DuckDB against the catalog attached as `lake`
+app/ports/page.tsx        Ports: the port each component binds, written to .env
 app/ops/page.tsx          Operations: service control, stack up, smoke test, logs
 components/               charts (sparkline, storage bars, API activity), table, sidebar, primitives
 ```
@@ -36,8 +38,8 @@ components/               charts (sparkline, storage bars, API activity), table,
   error}` on stdout; the wrapper only synthesizes that object when the process
   dies without parseable output, so a page never has to distinguish a crash
   from a reported failure.
-- **Timeouts follow the work, not the request.** Status, catalog, and logs get
-  25 s, stats 30 s; a query gets 150 s and `ops` 330 s, because both start a
+- **Timeouts follow the work, not the request.** Status, catalog, logs, and
+  ports get 25 s, stats 30 s; a query gets 150 s and `ops` 330 s, because both start a
   throwaway DuckDB or init container and pay its cold start before any work
   begins.
 - **Overview polls**, status every 5 s and stats every 8 s; the other pages
@@ -46,6 +48,6 @@ components/               charts (sparkline, storage bars, API activity), table,
 
 ## Security
 
-The console executes arbitrary SQL and starts, stops, and restarts containers,
-with no authentication in front of either. Keep it bound to localhost; do not
-expose port 3000.
+The console executes arbitrary SQL, starts, stops, and restarts containers, and
+edits `.env`, with no authentication in front of any of it. Keep it bound to
+localhost; do not expose `CONSOLE_PORT`.

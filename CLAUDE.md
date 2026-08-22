@@ -13,10 +13,12 @@ Next.js console over the top. One compose project. See [README.md](README.md).
 ```
 compose.yaml        the whole stack; one-shot init jobs + `client`/`test` profiles
 .env.example        credential/name template; copy to .env (gitignored)
-Makefile            the command surface (up/down/sql/smoke/status/load/console)
-scripts/            minio-init.sh, lakekeeper-init.sh, smoke-test.sh
-scripts/console/    nqlake.py (CLI + console backend), stack.py, data.py
-sql/attach.sql      attaches the catalog as `lake` in every DuckDB client
+Makefile            the command surface (up/down/sql/smoke/status/load/ports/console)
+scripts/            minio-init.sh, lakekeeper-init.sh, smoke-test.sh,
+                    duckdb-entrypoint.sh (renders the attach SQL per client)
+scripts/console/    nqlake.py (CLI + console backend), stack.py, data.py,
+                    ports.py (the .env port registry)
+sql/                attach.sql.template — the catalog attached as `lake`
 ui/                 the console (Next.js); its API routes shell out to nqlake.py
                     (ui/README.md documents its shape)
 images/             bind-mounted service data, gitignored
@@ -49,6 +51,24 @@ make up && make smoke
   fails the run immediately instead of starting a half-configured service.
   Adding a variable means adding it to `.env.example` too.
 
+## Ports
+
+Every port the stack binds is a variable in `.env`, and one number serves
+both sides: what a service listens on and what it publishes. `compose.yaml`,
+the init scripts, `nqlake.py`, and the Makefile all read it from there, so a
+port literal anywhere in them is a bug, not a shortcut.
+
+`scripts/console/ports.py` owns that file — the registry of variables, the
+checks a value has to pass, and the write. A new component's port is an entry
+there, a line in `.env.example`, and `${VAR:?}` wherever compose needs it;
+the CLI and the console pick it up with no further work.
+
+Applying a change is `make up`, which recreates the services whose mapping
+moved. MinIO is the one with state behind it: its address is stored in the
+warehouse's storage profile, so `lakekeeper-init` compares the two and writes
+the new endpoint back rather than leaving the catalog vending credentials for
+an address nothing listens on.
+
 ## Credentials
 
 `.env` is gitignored and never committed; `.env.example` carries the keys with
@@ -60,12 +80,15 @@ per table access, which is why `minio-init` creates a dedicated `lakekeeper`
 user — MinIO refuses `AssumeRole` for root credentials. Keep it that way; do
 not hand a query engine a static key to work around an STS problem.
 
-## Two names that must agree
+## The attach template
 
-`LAKEHOUSE_WAREHOUSE` in `.env` and the `ATTACH` name in `sql/attach.sql` are
-the same warehouse. Changing one without the other leaves every DuckDB client
-attaching a catalog that does not exist, and the failure surfaces at query
-time, not at startup.
+No DuckDB client carries the catalog address or the warehouse name.
+`scripts/duckdb-entrypoint.sh` renders `sql/attach.sql.template` into
+`/tmp/attach.sql` at container start, filling both from the environment, and
+every client — `make sql`, the smoke test, `nqlake.py query` — loads that file
+with `duckdb -init`. Keep it that way: a literal in the SQL goes stale the
+moment a port or the warehouse name changes, and it fails at query time rather
+than at startup.
 
 ## Console and CLI
 

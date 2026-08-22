@@ -1,7 +1,8 @@
-# The lakehouse as one compose service: MinIO (Parquet objects), Postgres +
+# The compose service to launch NQLake: MinIO (Parquet objects), Postgres +
 # Lakekeeper (Iceberg REST catalog), and DuckDB (query engine). `docker
-# compose up -d` brings up the stores and runs the one-shot init jobs; DuckDB
-# is an on-demand client behind the `client` and `test` profiles.
+# compose up -d` brings up the stores and runs the one-shot init jobs;
+#
+# Configure ports binding in .env or in UI.
 #
 # Images are defined in ../../Dockerfiles/lakehouse-*; persistent data is
 # bind-mounted from ./images (see README for the naming plan).
@@ -12,17 +13,23 @@ services:
   minio:
     build: ../../Dockerfiles/lakehouse-minio
     image: lakehouse/minio
-    command: ["server", "/data", "--console-address", ":9001"]
+    command:
+      - "server"
+      - "/data"
+      - "--address"
+      - ":${MINIO_API_PORT:?}"
+      - "--console-address"
+      - ":${MINIO_CONSOLE_PORT:?}"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
     volumes:
       - ./images/minio/data:/data
     ports:
-      - "9000:9000" # S3 API
-      - "9001:9001" # web console
+      - "${MINIO_API_PORT:?}:${MINIO_API_PORT:?}" # S3 API
+      - "${MINIO_CONSOLE_PORT:?}:${MINIO_CONSOLE_PORT:?}" # web console
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:${MINIO_API_PORT}/minio/health/live"]
       interval: 2s
       timeout: 10s
       retries: 5
@@ -38,6 +45,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      MINIO_API_PORT: ${MINIO_API_PORT:?}
       LAKEHOUSE_S3_ACCESS_KEY: ${LAKEHOUSE_S3_ACCESS_KEY:?}
       LAKEHOUSE_S3_SECRET_KEY: ${LAKEHOUSE_S3_SECRET_KEY:?}
       LAKEHOUSE_BUCKET: ${LAKEHOUSE_BUCKET:?}
@@ -54,8 +62,13 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       POSTGRES_DB: ${POSTGRES_DB:?}
+      # Read by the server and by every libpq client in the container,
+      # pg_isready below included.
+      PGPORT: ${POSTGRES_PORT:?}
     volumes:
       - ./images/postgres/data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:?}:${POSTGRES_PORT:?}" # catalog metadata DB
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 2s
@@ -70,8 +83,9 @@ services:
     command: ["migrate"]
     environment: &lakekeeper-env
       LAKEKEEPER__PG_ENCRYPTION_KEY: ${LAKEKEEPER_PG_ENCRYPTION_KEY:?}
-      LAKEKEEPER__PG_DATABASE_URL_READ: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      LAKEKEEPER__PG_DATABASE_URL_WRITE: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      LAKEKEEPER__PG_DATABASE_URL_READ: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT:?}/${POSTGRES_DB}
+      LAKEKEEPER__PG_DATABASE_URL_WRITE: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT:?}/${POSTGRES_DB}
+      LAKEKEEPER__LISTEN_PORT: ${LAKEKEEPER_PORT:?}
       RUST_LOG: info
     depends_on:
       postgres:
@@ -83,8 +97,9 @@ services:
     command: ["serve"]
     environment: *lakekeeper-env
     ports:
-      - "8181:8181" # REST catalog + management API + UI
+      - "${LAKEKEEPER_PORT:?}:${LAKEKEEPER_PORT:?}" # REST catalog + management API + UI
     healthcheck:
+      # Probes LAKEKEEPER__LISTEN_PORT, so it follows the variable too.
       test: ["CMD", "/home/nonroot/lakekeeper", "healthcheck"]
       interval: 2s
       timeout: 10s
@@ -96,7 +111,8 @@ services:
       postgres:
         condition: service_healthy
 
-  # One-shot: bootstrap the catalog and create the warehouse on MinIO.
+  # One-shot: bootstrap the catalog, create the warehouse on MinIO, and point
+  # an existing warehouse at MinIO's current port.
   lakekeeper-init:
     build: ../../Dockerfiles/lakehouse-duckdb
     image: lakehouse/duckdb
@@ -107,6 +123,8 @@ services:
       LAKEHOUSE_BUCKET: ${LAKEHOUSE_BUCKET:?}
       LAKEHOUSE_S3_ACCESS_KEY: ${LAKEHOUSE_S3_ACCESS_KEY:?}
       LAKEHOUSE_S3_SECRET_KEY: ${LAKEHOUSE_S3_SECRET_KEY:?}
+      LAKEKEEPER_PORT: ${LAKEKEEPER_PORT:?}
+      MINIO_API_PORT: ${MINIO_API_PORT:?}
     volumes:
       - ./scripts:/opt/lakehouse/scripts:ro
     depends_on:
@@ -115,15 +133,22 @@ services:
       minio-init:
         condition: service_completed_successfully
 
-  # Interactive SQL shell: `docker compose run --rm duckdb`.
+  # Interactive SQL shell: `docker compose run --rm duckdb`. The entrypoint
+  # renders sql/attach.sql.template into /tmp/attach.sql first, so the client
+  # attaches this stack's warehouse on this stack's catalog port.
   duckdb:
     build: ../../Dockerfiles/lakehouse-duckdb
     image: lakehouse/duckdb
     profiles: ["client"]
-    command: ["duckdb", "-init", "/opt/lakehouse/sql/attach.sql"]
+    entrypoint: ["/opt/lakehouse/scripts/duckdb-entrypoint.sh"]
+    command: ["duckdb", "-init", "/tmp/attach.sql"]
+    environment: &duckdb-env
+      LAKEHOUSE_WAREHOUSE: ${LAKEHOUSE_WAREHOUSE:?}
+      LAKEKEEPER_PORT: ${LAKEKEEPER_PORT:?}
     stdin_open: true
     tty: true
     volumes:
+      - ./scripts:/opt/lakehouse/scripts:ro
       - ./sql:/opt/lakehouse/sql:ro
       - ./images/duckdb/work:/work
     depends_on:
@@ -139,7 +164,9 @@ services:
     image: lakehouse/duckdb
     profiles: ["test"]
     restart: "no"
+    entrypoint: ["/opt/lakehouse/scripts/duckdb-entrypoint.sh"]
     command: ["bash", "/opt/lakehouse/scripts/smoke-test.sh"]
+    environment: *duckdb-env
     volumes:
       - ./scripts:/opt/lakehouse/scripts:ro
       - ./sql:/opt/lakehouse/sql:ro

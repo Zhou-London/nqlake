@@ -1,5 +1,13 @@
 # nqlake-console
 
+<p align="center">
+  <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white" />
+  <img alt="React 19" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" />
+  <img alt="TypeScript 5" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
+  <img alt="Backend: nqlake.py" src="https://img.shields.io/badge/backend-nqlake.py-3776AB?logo=python&logoColor=white" />
+  <img alt="Runs on the host" src="https://img.shields.io/badge/runs-on%20the%20host-4c1" />
+</p>
+
 Web console for the NQ Lake stack. Next.js on the host; every page reads the
 stack through `scripts/console/nqlake.py`, so the console and the CLI report
 the same numbers and run the same operations.

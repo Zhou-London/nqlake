@@ -49,6 +49,23 @@ make clean   # stop and DELETE all data
 `make up` is idempotent — it re-runs provisioning and bootstrap, then leaves
 the services running.
 
+The Makefile is the whole command surface:
+
+| Target | Does |
+|---|---|
+| `up` | Starts the stores and the catalog, then runs the init jobs |
+| `status` | Prints component and coordination health |
+| `ports` | Prints the port each component binds, and where the stack differs |
+| `load FILE=f TABLE=ns.t` | Loads a data file into an Iceberg table |
+| `console` | Runs the web console in development mode on `CONSOLE_PORT` |
+| `console-build` | Builds the web console, then serves the build on `CONSOLE_PORT` |
+| `sql` | Opens a DuckDB shell with the catalog attached as `lake` |
+| `smoke` | Writes and reads an Iceberg table end to end |
+| `ps` | Lists the compose services and their state |
+| `logs` | Follows Lakekeeper's log |
+| `down` | Stops the stack; data survives in `images/` |
+| `clean` | Stops the stack and deletes every object plus the catalog database |
+
 ## Structure
 
 ```
@@ -259,6 +276,12 @@ stack is actually on. Credentials live in `.env`, which is gitignored — see
   catalog port is a `.env` edit and nothing else.
 
 ## Releases
+
+### 2026-09-01
+
+- **The Makefile's targets are listed in full.** `ps`, `logs`, and
+  `console-build` had no entry, so the only way to find them was to read the
+  Makefile. The table after the quick start now names every target.
 
 ### 2026-08-22
 

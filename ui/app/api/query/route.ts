@@ -7,6 +7,6 @@ export async function POST(request: Request) {
   if (!sql?.trim()) {
     return Response.json({ ok: false, error: "empty statement" }, { status: 400 });
   }
-  // The DuckDB client container spins up per query; allow for image cold start.
+  // Bounded by the data DuckDB scans and returns, not by a cold start.
   return Response.json(await nqlake(["query", "--sql", sql], 150_000));
 }

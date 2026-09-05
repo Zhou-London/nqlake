@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   if (!table) return Response.json({ ok: false, error: "table is required" }, { status: 400 });
   const offset = params.get("offset") ?? "0";
   const limit = params.get("limit") ?? "200";
-  // Each page starts a DuckDB client container; allow for its cold start.
+  // Bounded by the size of the page DuckDB reads, not by a cold start.
   return Response.json(
     await nqlake(["rows", "--table", table, "--offset", offset, "--limit", limit], 150_000),
   );

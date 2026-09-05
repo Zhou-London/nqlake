@@ -85,7 +85,7 @@ export default function TablesPage() {
         <h1 className="text-xl font-semibold text-ink">Tables</h1>
         <p className="mt-0.5 text-sm text-ink-2">
           Iceberg tables in the warehouse: schema and snapshots from the catalog, rows through DuckDB one page at a
-          time. Each page starts a client container, so expect a few seconds per page.
+          time.
         </p>
       </div>
 

@@ -4,22 +4,17 @@ import { useState } from "react";
 import { ResultTable } from "@/components/result-table";
 import { Button, Panel, Spinner } from "@/components/ui";
 import { postJson } from "@/lib/client";
-import type { QueryPayload } from "@/lib/types";
+import type { RowsPayload } from "@/lib/types";
 
 const SNIPPETS: { label: string; sql: string }[] = [
-  { label: "Show namespaces", sql: "SELECT * FROM (SHOW ALL TABLES);" },
+  { label: "List tables", sql: "SELECT database, schema, name FROM (SHOW ALL TABLES) WHERE database = 'lake';" },
   {
-    label: "Create schema",
-    sql: "CREATE SCHEMA IF NOT EXISTS lake.market;",
+    label: "Describe table",
+    sql: "DESCRIBE lake.market.trades;",
   },
   {
-    label: "Create table",
-    sql: `CREATE TABLE IF NOT EXISTS lake.market.trades (
-  ts  TIMESTAMP,
-  sym VARCHAR,
-  px  DOUBLE,
-  qty BIGINT
-);`,
+    label: "Sample rows",
+    sql: "SELECT * FROM lake.market.trades LIMIT 100;",
   },
   {
     label: "Query trades",
@@ -32,14 +27,14 @@ ORDER BY notional DESC;`,
 
 export default function SqlPage() {
   const [sql, setSql] = useState<string>(SNIPPETS[3].sql);
-  const [result, setResult] = useState<QueryPayload | null>(null);
+  const [result, setResult] = useState<RowsPayload | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function run() {
     if (busy || !sql.trim()) return;
     setBusy(true);
     setResult(null);
-    setResult(await postJson<QueryPayload>("/api/query", { sql }));
+    setResult(await postJson<RowsPayload>("/api/query", { sql }));
     setBusy(false);
   }
 
@@ -48,9 +43,9 @@ export default function SqlPage() {
       <div>
         <h1 className="text-xl font-semibold text-ink">SQL</h1>
         <p className="mt-0.5 text-sm text-ink-2">
-          Runs DuckDB against the NQ Lake catalog (attached as{" "}
-          <code className="font-mono text-accent-strong">lake</code>). Each run starts a fresh client
-          container — expect a few seconds of overhead.
+          Runs DuckDB against the catalog, attached read-only as{" "}
+          <code className="font-mono text-accent-strong">lake</code>. Tables are created, loaded, and dropped on
+          the Tables page; at most 500 rows come back here, the count is exact.
         </p>
       </div>
 

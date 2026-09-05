@@ -3,13 +3,15 @@
 export function ResultTable({
   columns,
   rows,
+  maxHeight = "max-h-96",
 }: {
   columns: string[];
   rows: Record<string, unknown>[];
+  maxHeight?: string;
 }) {
   if (rows.length === 0) return <p className="text-sm text-ink-3">No rows.</p>;
   return (
-    <div className="max-h-96 overflow-auto rounded-lg border border-line">
+    <div className={`${maxHeight} overflow-auto rounded-lg border border-line`}>
       <table className="w-full text-sm">
         <thead className="sticky top-0 bg-background">
           <tr className="text-left text-xs text-ink-2">

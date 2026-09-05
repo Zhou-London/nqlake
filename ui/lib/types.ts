@@ -1,25 +1,19 @@
+/** Payload shapes returned by backend/nqlake.py --json. */
+
 export interface Component {
   state: string;
   health: string | null;
   status: string | null;
-  exitCode?: number;
+  exitCode: number | null;
   oneshot: boolean;
-  api?: boolean;
-  version?: string;
-  bootstrapped?: boolean;
 }
 
 export interface StatusPayload {
   ok: boolean;
   error?: string;
   components: Record<string, Component>;
-  links: {
-    "lakekeeper-postgres": { ok: boolean };
-    "lakekeeper-minio": { ok: boolean; warehouse?: string };
-    "duckdb-stack": { ok: boolean; at?: number; detail?: string };
-  };
-  server?: { version: string; bootstrapped: boolean; "authz-backend": string } | null;
-  warehouse?: { name: string; status: string; "storage-profile": { bucket: string } } | null;
+  catalog: { reachable: boolean; version: string | null; bootstrapped: boolean | null; dbOk: boolean };
+  warehouse: { name: string; status: string } | null;
 }
 
 export interface ContainerStats {
@@ -31,22 +25,11 @@ export interface ContainerStats {
   pids: number;
 }
 
-export interface DirStats {
-  bytes: number;
-  files: number;
-  parquetBytes: number;
-  parquetFiles: number;
-}
-
 export interface StatsPayload {
   ok: boolean;
   error?: string;
   containers: Record<string, ContainerStats>;
-  storage: { bucket: DirStats & { name: string }; postgres: DirStats; duckdb: DirStats };
-  tableCount: number | null;
-  warehouseStats: { timestamp: string; tables: number; views: number }[] | null;
-  apiSeries: { timestamp: string; calls: number; errors: number }[];
-  apiRoutes: { route: string; count: number }[];
+  storage: { bucket: number; postgres: number; duckdb: number };
 }
 
 export interface CatalogPayload {
@@ -63,20 +46,37 @@ export interface TableDetail {
   lastUpdatedMs: number;
   fields: { id: number; name: string; type: string; required: boolean }[];
   snapshotCount: number;
-  currentSnapshot: {
-    id: number;
-    timestampMs: number;
-    summary: Record<string, string>;
-  } | null;
+  currentSnapshot: { id: number; timestampMs: number; summary: Record<string, string> } | null;
 }
 
-export interface QueryPayload {
+export interface RowsPayload {
   ok: boolean;
   error?: string;
   columns?: string[];
   rows?: Record<string, unknown>[];
   rowCount?: number;
   truncated?: boolean;
+  elapsedMs?: number;
+  offset?: number;
+}
+
+export interface LoadPayload {
+  ok: boolean;
+  error?: string;
+  table?: string;
+  mode?: "create" | "append" | "replace";
+  tableRows?: number | null;
+  /** Columns cast on create because Iceberg has no such type (e.g. UTINYINT → INTEGER). */
+  widened?: { column: string; from: string; to: string }[];
+  elapsedMs?: number;
+}
+
+export interface OpsPayload {
+  ok: boolean;
+  error?: string;
+  action?: string;
+  service?: string | null;
+  detail?: string | null;
   elapsedMs?: number;
 }
 

@@ -1,0 +1,23 @@
+[project]
+name = "nqlake"
+version = "0.1.0"
+description = "CLI and console backend of the NQ Lake Iceberg lakehouse"
+requires-python = ">=3.14"
+# The Iceberg extension is built per DuckDB release and its write support is
+# still moving (which types it accepts, which format version it writes), so
+# the engine is pinned exactly; bump it here, `uv lock`, then `make smoke`.
+dependencies = [
+    # DuckDB computes: queries, table reads, and turning files into rows.
+    "duckdb==1.5.5",
+    # PyIceberg manages: creating, loading, and dropping tables through the
+    # catalog. Pinned exactly too; its write path and type mapping move
+    # between releases. The pyarrow extra is its FileIO and row format.
+    "pyiceberg[pyarrow]==0.12.0",
+    # DuckDB's Python API imports pytz to hand back TIMESTAMP WITH TIME ZONE
+    # values; without it a table with such a column cannot be read.
+    "pytz>=2024.1",
+]
+
+[tool.uv]
+# backend/ is a directory of scripts, not an installable package.
+package = false

@@ -1,18 +1,41 @@
-# The compose service to launch NQLake: MinIO (Parquet objects), Postgres +
-# Lakekeeper (Iceberg REST catalog), and DuckDB (query engine). `docker
-# compose up -d` brings up the stores and runs the one-shot init jobs;
+# The compose service to launch NQLake: MinIO (Parquet objects) and Postgres +
+# Lakekeeper (Iceberg REST catalog). `docker compose up -d` brings up the
+# stores and runs the one-shot init jobs. DuckDB, the query engine, is not a
+# service: it runs inside nqlake.py on the host (see pyproject.toml).
 #
 # Configure ports binding in .env or in UI.
 #
-# Images are defined in ../../Dockerfiles/lakehouse-*; persistent data is
-# bind-mounted from ./images (see README for the naming plan).
+# Images are built from the Dockerfiles under DOCKERFILES_DIR (see x-images
+# below); persistent data is bind-mounted from ./images (see README for the
+# naming plan).
 
 name: lakehouse
 
+# The five images, each built from DOCKERFILES_DIR/lakehouse-<name>. Services
+# merge the one they run with `<<:`, so an image is defined once however many
+# services share it. The directory is an absolute path set in .env: this
+# repository and the one holding the Dockerfiles are cloned independently, so
+# where one sits relative to the other is not fixed.
+x-images:
+  minio: &minio-image
+    build: ${DOCKERFILES_DIR:?}/lakehouse-minio
+    image: lakehouse/minio
+  mc: &mc-image
+    build: ${DOCKERFILES_DIR:?}/lakehouse-mc
+    image: lakehouse/mc
+  postgres: &postgres-image
+    build: ${DOCKERFILES_DIR:?}/lakehouse-postgres
+    image: lakehouse/postgres
+  lakekeeper: &lakekeeper-image
+    build: ${DOCKERFILES_DIR:?}/lakehouse-lakekeeper
+    image: lakehouse/lakekeeper
+  init: &init-image
+    build: ${DOCKERFILES_DIR:?}/lakehouse-init
+    image: lakehouse/init
+
 services:
   minio:
-    build: ../../Dockerfiles/lakehouse-minio
-    image: lakehouse/minio
+    <<: *minio-image
     command:
       - "server"
       - "/data"
@@ -38,10 +61,9 @@ services:
   # One-shot: warehouse bucket + the non-root user Lakekeeper vends STS
   # credentials with (MinIO refuses AssumeRole for root).
   minio-init:
-    build: ../../Dockerfiles/lakehouse-mc
-    image: lakehouse/mc
+    <<: *mc-image
     restart: "no"
-    entrypoint: ["/bin/sh", "/opt/lakehouse/scripts/minio-init.sh"]
+    entrypoint: ["/bin/sh", "/opt/lakehouse/backend/minio-init.sh"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
@@ -50,14 +72,13 @@ services:
       LAKEHOUSE_S3_SECRET_KEY: ${LAKEHOUSE_S3_SECRET_KEY:?}
       LAKEHOUSE_BUCKET: ${LAKEHOUSE_BUCKET:?}
     volumes:
-      - ./scripts:/opt/lakehouse/scripts:ro
+      - ./backend:/opt/lakehouse/backend:ro
     depends_on:
       minio:
         condition: service_healthy
 
   postgres:
-    build: ../../Dockerfiles/lakehouse-postgres
-    image: lakehouse/postgres
+    <<: *postgres-image
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
@@ -77,8 +98,7 @@ services:
       start_period: 10s
 
   lakekeeper-migrate:
-    build: ../../Dockerfiles/lakehouse-lakekeeper
-    image: lakehouse/lakekeeper
+    <<: *lakekeeper-image
     restart: "no"
     command: ["migrate"]
     environment: &lakekeeper-env
@@ -92,8 +112,7 @@ services:
         condition: service_healthy
 
   lakekeeper:
-    build: ../../Dockerfiles/lakehouse-lakekeeper
-    image: lakehouse/lakekeeper
+    <<: *lakekeeper-image
     command: ["serve"]
     environment: *lakekeeper-env
     ports:
@@ -114,10 +133,9 @@ services:
   # One-shot: bootstrap the catalog, create the warehouse on MinIO, and point
   # an existing warehouse at MinIO's current port.
   lakekeeper-init:
-    build: ../../Dockerfiles/lakehouse-duckdb
-    image: lakehouse/duckdb
+    <<: *init-image
     restart: "no"
-    command: ["bash", "/opt/lakehouse/scripts/lakekeeper-init.sh"]
+    command: ["bash", "/opt/lakehouse/backend/lakekeeper-init.sh"]
     environment:
       LAKEHOUSE_WAREHOUSE: ${LAKEHOUSE_WAREHOUSE:?}
       LAKEHOUSE_BUCKET: ${LAKEHOUSE_BUCKET:?}
@@ -126,52 +144,9 @@ services:
       LAKEKEEPER_PORT: ${LAKEKEEPER_PORT:?}
       MINIO_API_PORT: ${MINIO_API_PORT:?}
     volumes:
-      - ./scripts:/opt/lakehouse/scripts:ro
+      - ./backend:/opt/lakehouse/backend:ro
     depends_on:
       lakekeeper:
         condition: service_healthy
       minio-init:
-        condition: service_completed_successfully
-
-  # Interactive SQL shell: `docker compose run --rm duckdb`. The entrypoint
-  # renders sql/attach.sql.template into /tmp/attach.sql first, so the client
-  # attaches this stack's warehouse on this stack's catalog port.
-  duckdb:
-    build: ../../Dockerfiles/lakehouse-duckdb
-    image: lakehouse/duckdb
-    profiles: ["client"]
-    entrypoint: ["/opt/lakehouse/scripts/duckdb-entrypoint.sh"]
-    command: ["duckdb", "-init", "/tmp/attach.sql"]
-    environment: &duckdb-env
-      LAKEHOUSE_WAREHOUSE: ${LAKEHOUSE_WAREHOUSE:?}
-      LAKEKEEPER_PORT: ${LAKEKEEPER_PORT:?}
-    stdin_open: true
-    tty: true
-    volumes:
-      - ./scripts:/opt/lakehouse/scripts:ro
-      - ./sql:/opt/lakehouse/sql:ro
-      - ./images/duckdb/work:/work
-    depends_on:
-      lakekeeper:
-        condition: service_healthy
-      lakekeeper-init:
-        condition: service_completed_successfully
-
-  # End-to-end check: writes an Iceberg table through the catalog into MinIO
-  # and reads it back. `docker compose run --rm smoke-test`.
-  smoke-test:
-    build: ../../Dockerfiles/lakehouse-duckdb
-    image: lakehouse/duckdb
-    profiles: ["test"]
-    restart: "no"
-    entrypoint: ["/opt/lakehouse/scripts/duckdb-entrypoint.sh"]
-    command: ["bash", "/opt/lakehouse/scripts/smoke-test.sh"]
-    environment: *duckdb-env
-    volumes:
-      - ./scripts:/opt/lakehouse/scripts:ro
-      - ./sql:/opt/lakehouse/sql:ro
-    depends_on:
-      lakekeeper:
-        condition: service_healthy
-      lakekeeper-init:
         condition: service_completed_successfully

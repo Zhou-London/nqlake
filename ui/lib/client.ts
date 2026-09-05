@@ -1,42 +1,38 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-/** Polls a JSON endpoint; pass intervalMs 0 to fetch once. */
+/** Polls a JSON endpoint; pass intervalMs 0 to fetch once. `refresh` fetches now. */
 export function usePoll<T>(url: string, intervalMs: number) {
   const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const alive = useRef(true);
-
-  const refresh = useCallback(async () => {
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      const body = (await res.json()) as T;
-      if (alive.current) {
-        setData(body);
-        setError(null);
-      }
-    } catch (e) {
-      if (alive.current) setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [url]);
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
-    alive.current = true;
-    refresh();
-    if (intervalMs > 0) {
-      const id = setInterval(refresh, intervalMs);
-      return () => {
-        alive.current = false;
-        clearInterval(id);
-      };
-    }
+    let alive = true;
+    const tick = () =>
+      fetch(url, { cache: "no-store" })
+        .then((res) => res.json())
+        .then((body: T) => {
+          if (alive) setData(body);
+        })
+        .catch(() => {
+          /* the next tick retries */
+        });
+    tick();
+    const id = intervalMs > 0 ? setInterval(tick, intervalMs) : null;
     return () => {
-      alive.current = false;
+      alive = false;
+      if (id) clearInterval(id);
     };
-  }, [refresh, intervalMs]);
+  }, [url, intervalMs, generation]);
 
-  return { data, error, refresh };
+  const refresh = useCallback(() => setGeneration((g) => g + 1), []);
+  return { data, refresh };
+}
+
+export async function getJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, { cache: "no-store" });
+  return (await res.json()) as T;
 }
 
 export async function postJson<T>(url: string, body: unknown): Promise<T> {
@@ -48,16 +44,32 @@ export async function postJson<T>(url: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * Sends a file as the raw request body. XMLHttpRequest rather than fetch
+ * because only it reports upload progress.
+ */
+export function uploadFile<T>(url: string, file: File, onProgress: (fraction: number) => void): Promise<T> {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded / e.total);
+    };
+    xhr.onload = () => {
+      try {
+        resolve(JSON.parse(xhr.responseText) as T);
+      } catch {
+        resolve({ ok: false, error: `upload failed (HTTP ${xhr.status})` } as T);
+      }
+    };
+    xhr.onerror = () => resolve({ ok: false, error: "upload failed" } as T);
+    xhr.send(file);
+  });
+}
+
 export function formatBytes(n: number): string {
   if (n >= 1 << 30) return `${(n / (1 << 30)).toFixed(2)} GiB`;
   if (n >= 1 << 20) return `${(n / (1 << 20)).toFixed(1)} MiB`;
   if (n >= 1 << 10) return `${(n / (1 << 10)).toFixed(1)} KiB`;
   return `${n} B`;
-}
-
-export function formatAgo(ms: number): string {
-  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  return `${Math.round(s / 3600)}h ago`;
 }

@@ -9,7 +9,7 @@ variables, reading and writing them, and the checks a new value must pass.
 import socket
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT / ".env"
 
 MIN_PORT, MAX_PORT = 1, 65535

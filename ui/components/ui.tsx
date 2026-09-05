@@ -110,3 +110,16 @@ export function Spinner() {
     <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-line border-t-accent align-middle" />
   );
 }
+
+/** Outcome banner for an action; the text may span lines. */
+export function Message({ ok, text }: { ok: boolean; text: string }) {
+  return (
+    <div
+      className={`whitespace-pre-wrap rounded-lg border px-4 py-2.5 font-mono text-xs ${
+        ok ? "border-line bg-ok-weak text-ok" : "border-err/40 bg-err-weak text-err"
+      }`}
+    >
+      {text}
+    </div>
+  );
+}

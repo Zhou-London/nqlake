@@ -5,7 +5,12 @@
 images/*/data/
 images/*/work/
 images/*/state/
+images/duckdb/extensions/
+
+# The uv-managed Python environment (`make up` creates it from uv.lock).
+.venv/
 
 *.duckdb
 *.duckdb.wal
+__pycache__/
 .DS_Store

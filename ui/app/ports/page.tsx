@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { Button, Panel, Spinner, StatusBadge, type Tone } from "@/components/ui";
+import { Button, Message, Panel, Spinner, StatusBadge, type Tone } from "@/components/ui";
 import { postJson, usePoll } from "@/lib/client";
 import type { PortsPayload } from "@/lib/types";
 
@@ -90,15 +90,7 @@ export default function PortsPage() {
         </p>
       </div>
 
-      {message && (
-        <div
-          className={`whitespace-pre-wrap rounded-lg border px-4 py-2.5 text-xs ${
-            message.ok ? "border-line bg-ok-weak text-ok" : "border-err/40 bg-err-weak text-err"
-          }`}
-        >
-          {message.text}
-        </div>
-      )}
+      {message && <Message ok={message.ok} text={message.text} />}
 
       <Panel
         title="Components"

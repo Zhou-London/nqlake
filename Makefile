@@ -1,23 +1,29 @@
 # The lakehouse as one command surface. `make up` is the whole service:
-# stores, catalog, and init jobs.
+# stores, catalog, and init jobs, plus the Python environment the CLI and
+# the console backend run in.
 
-.PHONY: up down sql smoke ps logs clean console console-build status load ports
+.PHONY: up down smoke ps logs clean console console-build status load ports
 
 CONSOLE_PORT = $(or $(shell sed -n 's/^CONSOLE_PORT=//p' .env),\
                $(error CONSOLE_PORT is not set in .env))
 
+# nqlake.py runs under the uv-managed interpreter pinned by .python-version
+# and uv.lock; --frozen means the lock is the truth, never silently updated.
+NQLAKE = uv run --frozen python backend/nqlake.py
+
 up:
-	docker compose up -d --build
+	uv sync --frozen
+	docker compose up -d --build --remove-orphans
 
 status:
-	@python3 scripts/console/nqlake.py --pretty status
+	@$(NQLAKE) --pretty status
 
 ports:
-	@python3 scripts/console/nqlake.py --pretty ports
+	@$(NQLAKE) --pretty ports
 
 # Load a data file into an Iceberg table: make load FILE=x.csv TABLE=ns.name
 load:
-	@python3 scripts/console/nqlake.py --pretty load --file "$(FILE)" --table "$(TABLE)"
+	@$(NQLAKE) --pretty load --file "$(FILE)" --table "$(TABLE)"
 
 # NQ Lake console
 console:
@@ -29,12 +35,9 @@ console-build:
 down:
 	docker compose down
 
-# Interactive DuckDB shell with the catalog already attached as `lake`.
-sql:
-	docker compose run --rm duckdb
-
+# End-to-end check: write and read an Iceberg table through the catalog.
 smoke:
-	docker compose run --rm smoke-test
+	@$(NQLAKE) --pretty ops --action smoke
 
 ps:
 	docker compose ps

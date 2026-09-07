@@ -2,17 +2,19 @@
   "name": "nqlake-console",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "node run.mjs dev",
     "build": "next build",
     "start": "node run.mjs start",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write app lib *.mjs *.json",
-    "test": "node --test lib/*.test.mjs"
+    "format": "prettier --write app components/console lib *.mjs *.json",
+    "test": "node --test lib/*.test.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
     "class-variance-authority": "^0.7.1",
+    "cmdk": "^1.1.1",
     "cn": "^0.2.6",
     "geist": "^1.7.2",
     "lucide-react": "^1.41.0",

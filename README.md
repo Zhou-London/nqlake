@@ -29,8 +29,8 @@ the example configuration. `CONSOLE_PORT` in the root `.env` sets this port;
 - `make console-logs` follows the console log.
 
 The table browser supports name search, namespace filtering, column details,
-and snapshot metadata. Data previews return up to 500 rows and accept Iceberg
-filter expressions such as `price > 10`. Pagination moves through the returned
+and snapshot metadata. Data previews return 500 rows by default, up to 10,000,
+and accept Iceberg filter expressions such as `price > 10`. Pagination moves through the returned
 rows, with 50 rows per page. **Export CSV** downloads the returned result.
 Press Cmd+K or Ctrl+K to open table search.
 

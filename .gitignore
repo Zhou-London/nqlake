@@ -1,7 +1,7 @@
 # Local credentials. Copy .env.example to .env before `make up`.
 .env
 
-# Bind-mounted service data (see README: images/ naming plan).
+# Bind-mounted service data under images/<service>/.
 images/*/data/
 images/*/work/
 images/*/state/
@@ -14,3 +14,8 @@ images/duckdb/extensions/
 *.duckdb.wal
 __pycache__/
 .DS_Store
+
+# Next.js console build output and dependencies.
+console/node_modules/
+console/.next/
+console/*.tsbuildinfo

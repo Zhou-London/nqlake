@@ -1,21 +1,20 @@
-# The compose service to launch NQLake: MinIO (Parquet objects) and Postgres +
-# Lakekeeper (Iceberg REST catalog). `docker compose up -d` brings up the
-# stores and runs the one-shot init jobs. DuckDB, the query engine, is not a
-# service: it runs inside nqlake.py on the host (see pyproject.toml).
+# The NQ Lake stack: MinIO holds the Parquet files, Postgres and Lakekeeper
+# form the Iceberg REST catalog. `docker compose up -d` starts the stores and
+# runs the one-shot init jobs. The backend API and DuckDB are not services.
+# They run on the host; `make up` starts them (see Makefile, pyproject.toml).
 #
-# Configure ports binding in .env or in UI.
+# Every port is set in .env.
 #
 # Images are built from the Dockerfiles under DOCKERFILES_DIR (see x-images
-# below); persistent data is bind-mounted from ./images (see README for the
-# naming plan).
+# below). Service data is bind-mounted from ./images/<service>/data.
 
 name: lakehouse
 
-# The five images, each built from DOCKERFILES_DIR/lakehouse-<name>. Services
-# merge the one they run with `<<:`, so an image is defined once however many
-# services share it. The directory is an absolute path set in .env: this
-# repository and the one holding the Dockerfiles are cloned independently, so
-# where one sits relative to the other is not fixed.
+# The five images, each built from DOCKERFILES_DIR/lakehouse-<name>. Each
+# service merges its image with `<<:`, so a shared image is defined once.
+# DOCKERFILES_DIR is an absolute path set in .env. This repository and the
+# one holding the Dockerfiles are cloned independently, so their relative
+# location is not fixed.
 x-images:
   minio: &minio-image
     build: ${DOCKERFILES_DIR:?}/lakehouse-minio
@@ -41,16 +40,15 @@ services:
       - "/data"
       - "--address"
       - ":${MINIO_API_PORT:?}"
-      - "--console-address"
-      - ":${MINIO_CONSOLE_PORT:?}"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      # The embedded web console is off: the lakehouse has its own console.
+      MINIO_BROWSER: "off"
     volumes:
       - ./images/minio/data:/data
     ports:
       - "${MINIO_API_PORT:?}:${MINIO_API_PORT:?}" # S3 API
-      - "${MINIO_CONSOLE_PORT:?}:${MINIO_CONSOLE_PORT:?}" # web console
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${MINIO_API_PORT}/minio/health/live"]
       interval: 2s
@@ -58,12 +56,13 @@ services:
       retries: 5
       start_period: 10s
 
-  # One-shot: warehouse bucket + the non-root user Lakekeeper vends STS
-  # credentials with (MinIO refuses AssumeRole for root).
+  # One-shot job: creates the warehouse bucket and the non-root user
+  # Lakekeeper uses to vend STS credentials. MinIO refuses AssumeRole for
+  # the root user.
   minio-init:
     <<: *mc-image
     restart: "no"
-    entrypoint: ["/bin/sh", "/opt/lakehouse/backend/minio-init.sh"]
+    entrypoint: ["/bin/sh", "/opt/lakehouse/scripts/minio-init.sh"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
@@ -72,7 +71,7 @@ services:
       LAKEHOUSE_S3_SECRET_KEY: ${LAKEHOUSE_S3_SECRET_KEY:?}
       LAKEHOUSE_BUCKET: ${LAKEHOUSE_BUCKET:?}
     volumes:
-      - ./backend:/opt/lakehouse/backend:ro
+      - ./scripts:/opt/lakehouse/scripts:ro
     depends_on:
       minio:
         condition: service_healthy
@@ -83,8 +82,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
       POSTGRES_DB: ${POSTGRES_DB:?}
-      # Read by the server and by every libpq client in the container,
-      # pg_isready below included.
+      # PGPORT is read by the server and by every libpq client in the
+      # container, including pg_isready in the healthcheck below.
       PGPORT: ${POSTGRES_PORT:?}
     volumes:
       - ./images/postgres/data:/var/lib/postgresql/data
@@ -116,9 +115,9 @@ services:
     command: ["serve"]
     environment: *lakekeeper-env
     ports:
-      - "${LAKEKEEPER_PORT:?}:${LAKEKEEPER_PORT:?}" # REST catalog + management API + UI
+      - "${LAKEKEEPER_PORT:?}:${LAKEKEEPER_PORT:?}" # REST catalog, management API, web UI
     healthcheck:
-      # Probes LAKEKEEPER__LISTEN_PORT, so it follows the variable too.
+      # The probe reads LAKEKEEPER__LISTEN_PORT, so it follows the port in .env.
       test: ["CMD", "/home/nonroot/lakekeeper", "healthcheck"]
       interval: 2s
       timeout: 10s
@@ -130,12 +129,12 @@ services:
       postgres:
         condition: service_healthy
 
-  # One-shot: bootstrap the catalog, create the warehouse on MinIO, and point
-  # an existing warehouse at MinIO's current port.
+  # One-shot job: bootstraps the catalog, creates the warehouse when the
+  # catalog has none, and points an existing warehouse at MinIO's current port.
   lakekeeper-init:
     <<: *init-image
     restart: "no"
-    command: ["bash", "/opt/lakehouse/backend/lakekeeper-init.sh"]
+    command: ["bash", "/opt/lakehouse/scripts/lakekeeper-init.sh"]
     environment:
       LAKEHOUSE_WAREHOUSE: ${LAKEHOUSE_WAREHOUSE:?}
       LAKEHOUSE_BUCKET: ${LAKEHOUSE_BUCKET:?}
@@ -144,7 +143,7 @@ services:
       LAKEKEEPER_PORT: ${LAKEKEEPER_PORT:?}
       MINIO_API_PORT: ${MINIO_API_PORT:?}
     volumes:
-      - ./backend:/opt/lakehouse/backend:ro
+      - ./scripts:/opt/lakehouse/scripts:ro
     depends_on:
       lakekeeper:
         condition: service_healthy

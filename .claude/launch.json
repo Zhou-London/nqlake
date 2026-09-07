@@ -2,10 +2,20 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "nqlake-api",
+      "runtimeExecutable": "make",
+      "runtimeArgs": [
+        "api"
+      ],
+      "port": 40004
+    },
+    {
       "name": "nqlake-console",
       "runtimeExecutable": "make",
-      "runtimeArgs": ["console"],
-      "port": 3000
+      "runtimeArgs": [
+        "console"
+      ],
+      "port": 40001
     }
   ]
 }

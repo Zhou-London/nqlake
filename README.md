@@ -8,62 +8,33 @@
   <img alt="Docker Compose" src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white" />
   <img alt="Console: Next.js" src="https://img.shields.io/badge/console-Next.js-000000?logo=nextdotjs&logoColor=white" />
 </p>
+
 ## Console
 
-The Next.js console browses Iceberg tables, runs read-only SQL, and displays
-service health. The UI is built with Tailwind CSS and shadcn/ui components,
-Lucide icons, and react-hook-form with zod validation for every dialog. It
-follows the system light or dark theme; a header toggle overrides it.
+The Next.js console provides a workspace overview, a namespace and table
+catalog, a SQL workspace, Parquet import, and service health checks. It uses
+Tailwind CSS, shadcn/ui, Lucide, and React Hook Form with Zod.
 
-`make up` starts the console alongside the API and storage services. Install
-Node.js 22.9 or later and npm first. The first start installs the locked npm
-dependencies and builds the console. Open `http://localhost:40001` when using
-the example configuration. `CONSOLE_PORT` in the root `.env` sets this port;
-`API_PORT` sets the Python API connection. The console binds to loopback.
+Run `npm install` and `npm run dev` from `console/`, then open
+`http://127.0.0.1:<CONSOLE_PORT>`. The launcher reads `CONSOLE_PORT` from the
+root `.env`. The console proxies `/api/lake/*` to the local backend using
+`API_PORT` from the same file; browser requests stay on the console origin.
+Start the backend with the existing `make up` or `make api` command.
 
-- `make console` runs the development server in the foreground. Stop the
-  background console with `make console-stop` first.
-- `make console-start` installs dependencies, builds, and starts the production
-  console. A running console is left in place; stop it first to rebuild changes.
-- `make console-stop` stops the console. `make down` stops the whole stack.
-- `make console-logs` follows the console log.
+The catalog supports table schemas, row previews, filtering, CSV export,
+renaming, adding nullable columns, and appending JSON rows. Removing a table
+from the catalog preserves its storage files. Row deletion and table removal
+require the full table name as confirmation.
 
-The table browser supports name search, namespace filtering, column details,
-and snapshot metadata. Data previews return up to 500 rows and accept Iceberg
-filter expressions such as `price > 10`. Pagination moves through the returned
-rows, with 50 rows per page. **Export CSV** downloads the returned result.
-Press Cmd+K or Ctrl+K to open table search.
+Parquet import checks the file before writing. Overwrites and lossy type
+repairs require explicit confirmation. The SQL workspace uses the backend's
+read-only query endpoint; query history lasts until the page is left.
+Use Cmd/Ctrl+K to search and Cmd/Ctrl+Enter to run a query.
 
-Use **Namespaces** to create namespaces or drop empty ones. **Create table** accepts column names, Iceberg types, required flags, partition expressions,
-and table properties. Open a table and choose **Manage** to rename it, add
-columns, or update properties. Removing a key from the properties JSON removes that property.
-**Metadata → Drop table** requires the table name as confirmation. Stored files are retained
-unless you select the option to permanently delete them.
-
-**Import data** imports Parquet into a new or existing table in a namespace. Select a
-file and choose **Inspect file** to review its columns and type repairs. Uploads
-append by default. Replacing all rows requires the table name as confirmation;
-lossy type repairs require a separate acknowledgment. The result reports the
-written row count and repairs. Multipart uploads stream through the console to
-the API, with a ten-minute request timeout. After a connection failure, check
-the table before retrying because the write may have completed.
-
-The SQL workspace sends one read-only statement to DuckDB through `/query`.
-Select a table to generate its SQL path, or enter SQL directly. Press
-Cmd+Enter or Ctrl+Enter to execute. The result limit ranges from 100 to 10,000
-rows. Large integer values, including snapshot IDs, display without rounding.
-Service health refreshes every 30 seconds while the console is open;
-failed checks display an error and mark earlier results as stale.
-
-The browser calls the console's `/api` routes. Next.js forwards supported
-reads, table management requests, Parquet uploads, and SQL queries to the Python
-API on loopback. Storage credentials stay on the server. The frontend lives in
-`console/` and follows the
-[Next.js App Router](https://nextjs.org/docs/app/getting-started/installation).
-Generated shadcn/ui primitives live in `console/components/ui`; the console's
-own components live in `console/components/console`, with the form schemas in
-`console/lib/schemas.ts`. Add primitives with `npx shadcn add <component>`
-from `console/`.
+Run `npm run typecheck`, `npm test`, and `npm run build` in `console/` to
+validate the console. If a restricted environment blocks Turbopack's worker
+ports, use `npm run build -- --webpack`. Start a production build with
+`npm start`.
 
 ## Backend API
 

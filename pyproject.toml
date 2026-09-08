@@ -1,6 +1,6 @@
 [project]
 name = "nqlake"
-version = "0.1.0"
+version = "0.2.0"
 description = "Backend API of the NQ Lake Iceberg lakehouse"
 requires-python = ">=3.14"
 # Both engines are pinned to exact versions. The Iceberg extension is built

@@ -9,6 +9,9 @@
   <img alt="Console: Next.js" src="https://img.shields.io/badge/console-Next.js-000000?logo=nextdotjs&logoColor=white" />
 </p>
 
+Release notes: [0.2.0](docs/release-notes/0.2.0.md), the console, and
+[0.1.0](docs/release-notes/0.1.0.md), the backend API.
+
 ## Console
 
 The Next.js console provides a workspace overview, a namespace and table
@@ -37,8 +40,6 @@ ports, use `npm run build -- --webpack`. Start a production build with
 `npm start`.
 
 ## Backend API
-
-Release notes live in [docs/release-notes](docs/release-notes/0.1.0.md).
 
 `make up` starts a FastAPI backend on `API_PORT` from `.env` (default 40004)
 as a background process on the host, next to the compose stack; `make down`

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="436" viewBox="0 0 800 436" role="img" aria-label="Request path in 0.2.0: the browser talks only to the console on port 40001; the console's /api/lake route forwards to the backend API on port 40004 over loopback; the API reaches Lakekeeper, Postgres, and MinIO inside docker compose">
+<title>Request path in 0.2.0</title>
+<defs>
+<marker id="new" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#2a78d6"/></marker>
+<marker id="old" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 Z" fill="#898781"/></marker>
+</defs>
+<rect width="800" height="436" fill="#fcfcfb"/>
+<g font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+<text x="24" y="32" font-size="15" font-weight="600" fill="#0b0b0b">Request path in 0.2.0</text>
+<text x="24" y="52" font-size="12" fill="#52514e">The browser talks to one origin. Everything behind it stays on loopback or inside compose.</text>
+<rect x="24" y="69" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="42" y="79" font-size="12" fill="#52514e">New in 0.2.0</text>
+<rect x="144" y="69" width="12" height="12" rx="2" fill="#c3c2b7"/>
+<text x="162" y="79" font-size="12" fill="#52514e">Since 0.1.0</text>
+
+<!-- zones -->
+<rect x="180" y="100" width="308" height="252" rx="6" fill="none" stroke="#e1e0d9" stroke-dasharray="4 3"/>
+<text x="196" y="120" font-size="11" fill="#898781">Host processes, started by make up</text>
+<rect x="508" y="100" width="268" height="252" rx="6" fill="none" stroke="#e1e0d9" stroke-dasharray="4 3"/>
+<text x="524" y="120" font-size="11" fill="#898781">docker compose</text>
+
+<!-- browser -->
+<rect x="24" y="166" width="108" height="72" rx="6" fill="#eef4fc" stroke="#2a78d6"/>
+<text x="78" y="196" font-size="13" font-weight="600" fill="#0b0b0b" text-anchor="middle">Browser</text>
+<text x="78" y="216" font-size="11" fill="#52514e" text-anchor="middle" font-variant-numeric="tabular-nums">127.0.0.1:40001</text>
+
+<!-- console -->
+<rect x="196" y="140" width="144" height="124" rx="6" fill="#eef4fc" stroke="#2a78d6"/>
+<text x="268" y="164" font-size="13" font-weight="600" fill="#0b0b0b" text-anchor="middle">Console</text>
+<text x="268" y="182" font-size="11" fill="#52514e" text-anchor="middle">Next.js 16 · :40001</text>
+<rect x="204" y="198" width="128" height="26" rx="4" fill="#fcfcfb" stroke="#2a78d6"/>
+<text x="268" y="215" font-size="10" fill="#0b0b0b" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">/api/lake/[...path]</text>
+<text x="268" y="246" font-size="10.5" fill="#52514e" text-anchor="middle">pages and route handler</text>
+
+<!-- api -->
+<rect x="356" y="140" width="120" height="124" rx="6" fill="#f4f3ee" stroke="#c3c2b7"/>
+<text x="416" y="164" font-size="13" font-weight="600" fill="#0b0b0b" text-anchor="middle">Backend API</text>
+<text x="416" y="182" font-size="11" fill="#52514e" text-anchor="middle">FastAPI · :40004</text>
+<rect x="364" y="198" width="104" height="22" rx="4" fill="#fcfcfb" stroke="#c3c2b7"/>
+<text x="416" y="213" font-size="10.5" fill="#0b0b0b" text-anchor="middle">PyIceberg manages</text>
+<rect x="364" y="228" width="104" height="22" rx="4" fill="#fcfcfb" stroke="#c3c2b7"/>
+<text x="416" y="243" font-size="10.5" fill="#0b0b0b" text-anchor="middle">DuckDB computes</text>
+
+<!-- compose services -->
+<rect x="524" y="140" width="224" height="46" rx="6" fill="#f4f3ee" stroke="#c3c2b7"/>
+<text x="536" y="160" font-size="12" font-weight="600" fill="#0b0b0b">Lakekeeper</text>
+<text x="536" y="176" font-size="10.5" fill="#52514e">Iceberg REST catalog · :40002</text>
+<rect x="524" y="204" width="224" height="46" rx="6" fill="#f4f3ee" stroke="#c3c2b7"/>
+<text x="536" y="224" font-size="12" font-weight="600" fill="#0b0b0b">Postgres</text>
+<text x="536" y="240" font-size="10.5" fill="#52514e">catalog metadata · :40003</text>
+<rect x="524" y="292" width="224" height="46" rx="6" fill="#f4f3ee" stroke="#c3c2b7"/>
+<text x="536" y="312" font-size="12" font-weight="600" fill="#0b0b0b">MinIO</text>
+<text x="536" y="328" font-size="10.5" fill="#52514e">Parquet files over S3 · :40000</text>
+
+<!-- arrows -->
+<line x1="132" y1="202" x2="194" y2="202" stroke="#2a78d6" stroke-width="1.5" marker-end="url(#new)"/>
+<text x="163" y="194" font-size="10" fill="#2a78d6" text-anchor="middle">one origin</text>
+<line x1="340" y1="211" x2="354" y2="211" stroke="#2a78d6" stroke-width="1.5" marker-end="url(#new)"/>
+<path d="M476 209 C 500 209, 500 163, 522 163" fill="none" stroke="#898781" stroke-width="1.5" marker-end="url(#old)"/>
+<path d="M476 239 C 500 239, 500 315, 522 315" fill="none" stroke="#898781" stroke-width="1.5" marker-end="url(#old)"/>
+<line x1="636" y1="186" x2="636" y2="202" stroke="#898781" stroke-width="1.5" marker-end="url(#old)"/>
+<path d="M748 163 C 760 163, 760 315, 750 315" fill="none" stroke="#898781" stroke-width="1.2" stroke-dasharray="3 3" marker-end="url(#old)"/>
+<text x="770" y="240" font-size="9.5" fill="#898781" text-anchor="middle" transform="rotate(-90 770 240)">vends S3 credentials</text>
+
+<!-- guards -->
+<text x="24" y="380" font-size="11" fill="#52514e">The route forwards to 127.0.0.1:API_PORT and keeps the API off the page: only /status, /namespaces, /query, and /parquet paths;</text>
+<text x="24" y="398" font-size="11" fill="#52514e">writes with a foreign Origin are refused; only Content-Type is forwarded; 120 s timeout; 502 with a plain message when the API is down.</text>
+<text x="24" y="420" font-size="11" fill="#898781">In 0.1.0 a client called :40004 itself and :40001 was reserved.</text>
+</g>
+</svg>

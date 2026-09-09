@@ -9,14 +9,15 @@
   <img alt="Console: Next.js" src="https://img.shields.io/badge/console-Next.js-000000?logo=nextdotjs&logoColor=white" />
 </p>
 
-Release notes: [0.2.0](docs/release-notes/0.2.0.md), the console, and
+Release notes: [0.3.0](docs/release-notes/0.3.0.md), the console's HeroUI
+migration, [0.2.0](docs/release-notes/0.2.0.md), the console, and
 [0.1.0](docs/release-notes/0.1.0.md), the backend API.
 
 ## Console
 
 The Next.js console provides a workspace overview, a namespace and table
 catalog, a SQL workspace, Parquet import, and service health checks. It uses
-Tailwind CSS, shadcn/ui, Lucide, and React Hook Form with Zod.
+Tailwind CSS, HeroUI, Lucide, and React Hook Form with Zod.
 
 Run `npm install` and `npm run dev` from `console/`, then open
 `http://127.0.0.1:<CONSOLE_PORT>`. The launcher reads `CONSOLE_PORT` from the

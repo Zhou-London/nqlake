@@ -1,4 +1,6 @@
 "use client";
+import { Card } from "@heroui/react";
+import { SelectField } from "@/components/ui/select";
 import { useEffect, useState } from "react";
 import { ArrowRight, FolderOpen, Search, Table2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -80,7 +82,7 @@ export default function Catalog() {
       <PageHeading
         eyebrow="Data catalog"
         title="Data catalog"
-        description=""
+        description="Browse tables, organize namespaces, and manage your data."
       >
         <NewNamespaceButton />
         <NewTableButton namespace={ns === "all" ? undefined : ns} />
@@ -91,14 +93,17 @@ export default function Catalog() {
           onRetry={refresh}
         />
       )}
-      <Tabs value={view} onValueChange={setView}>
-        <div className="mb-5 flex items-center justify-between border-b pb-4">
-          <TabsList>
-            <TabsTrigger value="tables">
+      <Tabs
+        selectedKey={view}
+        onSelectionChange={(key) => setView(String(key))}
+      >
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+          <TabsList aria-label="Catalog views">
+            <TabsTrigger id="tables">
               <Table2 size={14} />
               Tables <span className="ml-1 text-[10px]">{tables.length}</span>
             </TabsTrigger>
-            <TabsTrigger value="namespaces">
+            <TabsTrigger id="namespaces">
               <FolderOpen size={14} />
               Namespaces{" "}
               <span className="ml-1 text-[10px]">{namespaces.length}</span>
@@ -106,13 +111,13 @@ export default function Catalog() {
           </TabsList>
           <RefreshButton loading={loading} onClick={refresh} />
         </div>
-        <TabsContent value="tables">
-          <div className="panel overflow-hidden">
+        <TabsContent id="tables">
+          <Card className="panel overflow-hidden">
             <div className="flex flex-wrap items-center gap-3 p-4">
               <div className="relative min-w-44 flex-1 sm:max-w-xs">
                 <Search
                   size={14}
-                  className="absolute left-3 top-3 text-muted-foreground"
+                  className="pointer-events-none absolute left-3 top-3 z-10 text-muted-foreground"
                 />
                 <Input
                   aria-label="Filter tables"
@@ -125,30 +130,30 @@ export default function Catalog() {
                   }}
                 />
               </div>
-              <select
-                aria-label="Filter by namespace"
-                className="native-select"
+              <SelectField
+                label="Filter by namespace"
+                className="w-full sm:w-44"
                 value={ns}
-                onChange={(e) => {
-                  setNs(e.target.value);
+                onChange={(value) => {
+                  setNs(value);
                   setPage(0);
                 }}
-              >
-                <option value="all">All namespaces</option>
-                {namespaces.map((n) => (
-                  <option key={n}>{n}</option>
-                ))}
-              </select>
-              <select
-                aria-label="Sort by"
-                className="native-select sm:ml-auto"
+                options={[
+                  { value: "all", label: "All namespaces" },
+                  ...namespaces.map((n) => ({ value: n, label: n })),
+                ]}
+              />
+              <SelectField
+                label="Sort by"
+                className="w-full sm:ml-auto sm:w-40"
                 value={sort}
-                onChange={(e) => setSort(e.target.value)}
-              >
-                <option value="updated">Last updated</option>
-                <option value="name">Name A → Z</option>
-                <option value="rows">Most rows</option>
-              </select>
+                onChange={setSort}
+                options={[
+                  { value: "updated", label: "Last updated" },
+                  { value: "name", label: "Name A → Z" },
+                  { value: "rows", label: "Most rows" },
+                ]}
+              />
             </div>
             {loading && !updated ? (
               <LoadingState />
@@ -171,37 +176,37 @@ export default function Catalog() {
                 }
               />
             )}
-            <div className="flex items-center justify-between border-t px-5 py-3 text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3 text-[11px] text-muted-foreground">
               <span>{number(filtered.length)} tables</span>
               <div className="flex items-center gap-3">
                 <span>
                   {currentPage + 1} / {maxPage + 1}
                 </span>
                 <Button
-                  variant="outline"
+                  variant="tertiary"
                   size="sm"
-                  disabled={currentPage === 0}
-                  onClick={() => setPage(currentPage - 1)}
+                  isDisabled={currentPage === 0}
+                  onPress={() => setPage(currentPage - 1)}
                 >
                   Previous
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="tertiary"
                   size="sm"
-                  disabled={currentPage >= maxPage}
+                  isDisabled={currentPage >= maxPage}
                   onClick={() => setPage(currentPage + 1)}
                 >
                   Next
                 </Button>
               </div>
             </div>
-          </div>
+          </Card>
         </TabsContent>
-        <TabsContent value="namespaces">
+        <TabsContent id="namespaces">
           {loading && !updated ? (
             <LoadingState />
           ) : !namespaces.length ? (
-            <div className="panel">
+            <Card className="panel">
               <EmptyState
                 icon={FolderOpen}
                 title={
@@ -211,13 +216,13 @@ export default function Catalog() {
                 }
                 description="Organize data into namespaces such as raw, staging, or analytics."
               />
-            </div>
+            </Card>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {namespaces.map((namespace) => {
                 const items = tables.filter((t) => t.namespace === namespace);
                 return (
-                  <div key={namespace} className="panel p-5">
+                  <Card key={namespace} className="panel p-5">
                     <div className="flex items-center justify-between">
                       <FolderOpen
                         size={22}
@@ -226,15 +231,10 @@ export default function Catalog() {
                       />
                       <Button
                         variant="ghost"
-                        size="icon"
+                        isIconOnly
                         aria-label={`Delete namespace ${namespace}`}
-                        title={
-                          items.length
-                            ? "Only empty namespaces can be deleted"
-                            : "Delete empty namespace"
-                        }
-                        disabled={items.length > 0}
-                        onClick={() => {
+                        isDisabled={items.length > 0}
+                        onPress={() => {
                           setDeleting(namespace);
                           setDeleteError("");
                         }}
@@ -258,7 +258,7 @@ export default function Catalog() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
+                        onPress={() => {
                           setNs(namespace);
                           setPage(0);
                           setView("tables");
@@ -268,7 +268,7 @@ export default function Catalog() {
                         <ArrowRight className="size-3" />
                       </Button>
                     </div>
-                  </div>
+                  </Card>
                 );
               })}
             </div>
@@ -276,7 +276,7 @@ export default function Catalog() {
         </TabsContent>
       </Tabs>
       <Dialog
-        open={!!deleting}
+        isOpen={!!deleting}
         onOpenChange={(value) => {
           if (!value && !busy) setDeleting(null);
         }}
@@ -290,16 +290,16 @@ export default function Catalog() {
           {deleteError && <ErrorBanner message={deleteError} />}
           <div className="flex justify-end gap-2">
             <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() => setDeleting(null)}
+              variant="tertiary"
+              isDisabled={busy}
+              onPress={() => setDeleting(null)}
             >
               Cancel
             </Button>
             <Button
-              variant="destructive"
-              disabled={busy}
-              onClick={removeNamespace}
+              variant="danger"
+              isDisabled={busy}
+              onPress={removeNamespace}
             >
               {busy ? "Deleting…" : "Delete namespace"}
             </Button>

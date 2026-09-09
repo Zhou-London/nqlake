@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { Chip } from "@heroui/react";
 import { Table2 } from "lucide-react";
 import { type LakeTable, tableHref } from "@/lib/api";
 import { date, number } from "@/lib/utils";
@@ -23,7 +24,7 @@ export function TableList({
     );
   return (
     <div className="overflow-x-auto">
-      <table className="data-table">
+      <table className="data-table" aria-label="Catalog tables">
         <thead>
           <tr>
             <th>Table name</th>
@@ -46,9 +47,9 @@ export function TableList({
                 </Link>
               </td>
               <td>
-                <span className="rounded border bg-muted/50 px-2 py-1 text-[10px] text-muted-foreground">
+                <Chip size="sm" variant="soft" className="text-[10px]">
                   {table.namespace}
-                </span>
+                </Chip>
               </td>
               <td className="text-right font-mono text-[11px]">
                 {number(table.row_count)}

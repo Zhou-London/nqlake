@@ -1,4 +1,5 @@
 "use client";
+import { FormSelect } from "@/components/ui/select";
 import { useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -6,6 +7,7 @@ import { z } from "zod";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { FormCheckbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -51,9 +53,9 @@ const tableSchema = z.object({
     ),
 });
 export function NewNamespaceButton({
-  variant = "outline",
+  variant = "tertiary",
 }: {
-  variant?: "outline" | "default";
+  variant?: "tertiary" | "primary";
 }) {
   const [open, setOpen] = useState(false);
   const { refresh } = useLake();
@@ -77,12 +79,12 @@ export function NewNamespaceButton({
   }
   return (
     <>
-      <Button variant={variant} onClick={() => setOpen(true)}>
+      <Button variant={variant} onPress={() => setOpen(true)}>
         <Plus className="size-3.5" />
         New namespace
       </Button>
       <Dialog
-        open={open}
+        isOpen={open}
         onOpenChange={(value) => {
           if (!form.formState.isSubmitting) setOpen(value);
         }}
@@ -117,13 +119,13 @@ export function NewNamespaceButton({
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
-                variant="outline"
-                disabled={form.formState.isSubmitting}
-                onClick={() => setOpen(false)}
+                variant="tertiary"
+                isDisabled={form.formState.isSubmitting}
+                onPress={() => setOpen(false)}
               >
                 Cancel
               </Button>
-              <Button disabled={form.formState.isSubmitting}>
+              <Button type="submit" isDisabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting && (
                   <Loader2 className="animate-spin" />
                 )}
@@ -165,8 +167,8 @@ export function NewTableButton({ namespace }: { namespace?: string }) {
   return (
     <>
       <Button
-        disabled={!namespaces.length}
-        onClick={() => {
+        isDisabled={!namespaces.length}
+        onPress={() => {
           form.setValue("namespace", namespace || namespaces[0] || "");
           setOpen(true);
         }}
@@ -175,7 +177,7 @@ export function NewTableButton({ namespace }: { namespace?: string }) {
         New table
       </Button>
       <Dialog
-        open={open}
+        isOpen={open}
         onOpenChange={(value) => {
           if (!form.formState.isSubmitting) setOpen(value);
         }}
@@ -193,15 +195,14 @@ export function NewTableButton({ namespace }: { namespace?: string }) {
                 <label htmlFor="table-namespace" className="field-label">
                   Namespace
                 </label>
-                <select
+                <FormSelect
+                  control={form.control}
+                  name="namespace"
                   id="table-namespace"
-                  className="native-select w-full"
-                  {...form.register("namespace")}
-                >
-                  {namespaces.map((ns) => (
-                    <option key={ns}>{ns}</option>
-                  ))}
-                </select>
+                  label="Namespace"
+                  options={namespaces.map((ns) => ({ value: ns, label: ns }))}
+                  isDisabled={form.formState.isSubmitting}
+                />
                 <p className="field-error">
                   {form.formState.errors.namespace?.message}
                 </p>
@@ -227,7 +228,7 @@ export function NewTableButton({ namespace }: { namespace?: string }) {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  onClick={() =>
+                  onPress={() =>
                     fields.append({ name: "", type: "string", required: false })
                   }
                 >
@@ -238,19 +239,19 @@ export function NewTableButton({ namespace }: { namespace?: string }) {
               <div className="space-y-3">
                 {fields.fields.map((field, i) => (
                   <div key={field.id}>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Input
                         aria-label={`Column ${i + 1} name`}
                         placeholder="Column name"
                         {...form.register(`columns.${i}.name`)}
                         className="min-w-0 flex-1"
                       />
-                      <select
-                        aria-label={`Column ${i + 1} type`}
-                        className="native-select w-28"
-                        {...form.register(`columns.${i}.type`)}
-                      >
-                        {[
+                      <FormSelect
+                        control={form.control}
+                        name={`columns.${i}.type`}
+                        label={`Column ${i + 1} type`}
+                        className="w-28 shrink-0"
+                        options={[
                           "string",
                           "long",
                           "int",
@@ -263,25 +264,23 @@ export function NewTableButton({ namespace }: { namespace?: string }) {
                           "uuid",
                           "binary",
                           "decimal(20,0)",
-                        ].map((t) => (
-                          <option key={t}>{t}</option>
-                        ))}
-                      </select>
-                      <label className="flex items-center gap-1 whitespace-nowrap text-[11px]">
-                        <input
-                          type="checkbox"
-                          className="accent-blue-600"
-                          {...form.register(`columns.${i}.required`)}
-                        />
+                        ].map((t) => ({ value: t, label: t }))}
+                        isDisabled={form.formState.isSubmitting}
+                      />
+                      <FormCheckbox
+                        control={form.control}
+                        name={`columns.${i}.required`}
+                        isDisabled={form.formState.isSubmitting}
+                      >
                         Required
-                      </label>
+                      </FormCheckbox>
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
+                        isIconOnly
                         aria-label={`Remove column ${i + 1}`}
-                        disabled={fields.fields.length === 1}
-                        onClick={() => fields.remove(i)}
+                        isDisabled={fields.fields.length === 1}
+                        onPress={() => fields.remove(i)}
                       >
                         <Trash2 size={14} />
                       </Button>
@@ -305,13 +304,13 @@ export function NewTableButton({ namespace }: { namespace?: string }) {
             <div className="flex justify-end gap-2">
               <Button
                 type="button"
-                variant="outline"
-                disabled={form.formState.isSubmitting}
-                onClick={() => setOpen(false)}
+                variant="tertiary"
+                isDisabled={form.formState.isSubmitting}
+                onPress={() => setOpen(false)}
               >
                 Cancel
               </Button>
-              <Button disabled={form.formState.isSubmitting}>
+              <Button type="submit" isDisabled={form.formState.isSubmitting}>
                 {form.formState.isSubmitting && (
                   <Loader2 className="animate-spin" />
                 )}

@@ -1,6 +1,9 @@
 "use client";
+import { Card } from "@heroui/react";
+import { FormSelect } from "@/components/ui/select";
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { buttonVariants } from "@heroui/styles";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,10 +14,10 @@ import {
   FileCheck2,
   FileUp,
   Loader2,
-  ShieldCheck,
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox, FormCheckbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { PageHeading, ErrorBanner } from "@/components/shared";
 import { useLake } from "@/components/lake-provider";
@@ -130,7 +133,7 @@ export default function Imports() {
       <PageHeading
         eyebrow=""
         title="Import data"
-        description=""
+        description="Bring Parquet data into your lakehouse in three simple steps."
       />
       <div className="mb-7 grid grid-cols-3 gap-3 text-xs sm:max-w-lg">
         {["Choose file", "Inspect schema", "Import"].map((label, i) => (
@@ -159,7 +162,10 @@ export default function Imports() {
       </div>
       {error && <ErrorBanner message={error} />}
       {result ? (
-        <section className="panel mx-auto max-w-2xl p-10 text-center">
+        <Card
+          render={(props) => <section {...props} />}
+          className="panel mx-auto max-w-2xl p-10 text-center"
+        >
           <CheckCircle2
             className="mx-auto mb-5 size-12 text-emerald-500"
             strokeWidth={1.5}
@@ -174,7 +180,7 @@ export default function Imports() {
             Snapshot · {result.snapshot_id ?? "—"}
           </p>
           {result.repairs.length > 0 && (
-            <div className="mt-5 rounded-lg bg-muted p-4 text-left text-xs">
+            <div className="mt-5 rounded-lg bg-surface-secondary p-4 text-left text-xs">
               <p className="mb-2 font-medium">
                 {result.repairs.length} type conversions applied
               </p>
@@ -188,8 +194,8 @@ export default function Imports() {
           )}
           <div className="mt-7 flex justify-center gap-3">
             <Button
-              variant="outline"
-              onClick={() => {
+              variant="tertiary"
+              onPress={() => {
                 setResult(null);
                 setFile(null);
                 setInspection(null);
@@ -199,18 +205,26 @@ export default function Imports() {
             >
               Import another file
             </Button>
-            <Button asChild>
-              <Link href={tableHref(result.namespace, result.table)}>
-                View table
-                <ArrowRight className="size-3.5" />
-              </Link>
-            </Button>
+
+            <Link
+              href={tableHref(result.namespace, result.table)}
+              className={buttonVariants({
+                variant: "primary",
+                className: "gap-2 text-xs",
+              })}
+            >
+              View table
+              <ArrowRight className="size-3.5" />
+            </Link>
           </div>
-        </section>
+        </Card>
       ) : (
         <div className="grid items-start gap-5 xl:grid-cols-[1fr_310px]">
           <div className="min-w-0 space-y-5">
-            <section className="panel p-5">
+            <Card
+              render={(props) => <section {...props} />}
+              className="panel p-5"
+            >
               <h2 className="mb-4 text-sm font-medium">Source file</h2>
               <input
                 ref={input}
@@ -259,9 +273,9 @@ export default function Imports() {
               </button>
               <div className="mt-4 flex items-center justify-between gap-3">
                 <Button
-                  variant="outline"
-                  disabled={!file || busy || submitting}
-                  onClick={inspect}
+                  variant="tertiary"
+                  isDisabled={!file || busy || submitting}
+                  onPress={inspect}
                 >
                   {busy ? (
                     <Loader2 className="size-3.5 animate-spin" />
@@ -271,9 +285,12 @@ export default function Imports() {
                   {busy ? "Inspecting…" : "Inspect file"}
                 </Button>
               </div>
-            </section>
+            </Card>
             {inspection && (
-              <section className="panel overflow-hidden">
+              <Card
+                render={(props) => <section {...props} />}
+                className="panel overflow-hidden"
+              >
                 <div className="panel-title">
                   <h2 className="text-sm font-medium">Schema inspection</h2>
                   <span className="text-[11px] text-muted-foreground">
@@ -334,20 +351,18 @@ export default function Imports() {
                     </p>
                   )}
                   {inspection.repairs.some((r) => r.lossy) && (
-                    <label className="mt-4 flex items-start gap-2 text-xs leading-5">
-                      <input
-                        type="checkbox"
-                        className="mt-1 accent-blue-600"
-                        checked={lossy}
-                        onChange={(e) => setLossy(e.target.checked)}
-                        disabled={submitting}
-                      />
+                    <Checkbox
+                      className="mt-4"
+                      isSelected={lossy}
+                      onChange={setLossy}
+                      isDisabled={submitting}
+                    >
                       I understand the precision loss and approve these
                       conversions.
-                    </label>
+                    </Checkbox>
                   )}
                 </div>
-              </section>
+              </Card>
             )}
           </div>
           <form onSubmit={form.handleSubmit(upload)} className="panel p-5">
@@ -357,16 +372,15 @@ export default function Imports() {
                 <label htmlFor="import-ns" className="field-label">
                   Namespace
                 </label>
-                <select
+                <FormSelect
+                  control={form.control}
+                  name="namespace"
                   id="import-ns"
-                  className="native-select w-full"
-                  {...form.register("namespace")}
-                >
-                  <option value="">Select a namespace</option>
-                  {namespaces.map((ns) => (
-                    <option key={ns}>{ns}</option>
-                  ))}
-                </select>
+                  label="Namespace"
+                  placeholder="Select a namespace"
+                  isDisabled={submitting}
+                  options={namespaces.map((ns) => ({ value: ns, label: ns }))}
+                />
                 <p className="field-error">
                   {form.formState.errors.namespace?.message}
                 </p>
@@ -393,33 +407,34 @@ export default function Imports() {
                 <label htmlFor="import-mode" className="field-label">
                   Write mode
                 </label>
-                <select
+                <FormSelect
+                  control={form.control}
+                  name="mode"
                   id="import-mode"
-                  className="native-select w-full"
-                  {...form.register("mode")}
-                >
-                  <option value="append">Append data</option>
-                  <option value="overwrite">Overwrite all data</option>
-                </select>
-              </div>
-              <label className="flex items-start gap-2 text-xs leading-5">
-                <input
-                  type="checkbox"
-                  className="mt-1 accent-blue-600"
-                  {...form.register("create")}
+                  label="Write mode"
+                  isDisabled={submitting}
+                  options={[
+                    { value: "append", label: "Append data" },
+                    { value: "overwrite", label: "Overwrite all data" },
+                  ]}
                 />
+              </div>
+              <FormCheckbox
+                control={form.control}
+                name="create"
+                isDisabled={submitting}
+              >
                 Create if not exist
-              </label>
+              </FormCheckbox>
               {mode === "overwrite" && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-                  <label className="flex items-start gap-2 text-xs leading-5 text-amber-800">
-                    <input
-                      type="checkbox"
-                      className="mt-1 accent-blue-600"
-                      {...form.register("confirm")}
-                    />
+                  <FormCheckbox
+                    control={form.control}
+                    name="confirm"
+                    isDisabled={submitting}
+                  >
                     I confirm replacing all rows in the destination table
-                  </label>
+                  </FormCheckbox>
                   <p className="field-error">
                     {form.formState.errors.confirm?.message}
                   </p>
@@ -427,8 +442,9 @@ export default function Imports() {
               )}
             </fieldset>
             <Button
+              type="submit"
               className="mt-6 w-full"
-              disabled={
+              isDisabled={
                 !inspection ||
                 busy ||
                 submitting ||

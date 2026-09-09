@@ -7,7 +7,7 @@ export default function ErrorPage({ reset }: { reset: () => void }) {
       <p className="mb-6 mt-3 text-sm text-muted-foreground">
         Try again. If the problem persists, check the data service connection.
       </p>
-      <Button onClick={reset}>Try again</Button>
+      <Button onPress={reset}>Try again</Button>
     </div>
   );
 }

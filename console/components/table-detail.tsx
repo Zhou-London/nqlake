@@ -1,6 +1,9 @@
 "use client";
+import { Card, TextArea } from "@heroui/react";
+import { FormSelect, SelectField } from "@/components/ui/select";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { buttonVariants } from "@heroui/styles";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -214,14 +217,17 @@ export function TableDetail({
             void loadRows();
           }}
         />
-        <Button asChild>
-          <Link
-            href={`/query?sql=${encodeURIComponent(tableSql(namespace, name))}`}
-          >
-            <TerminalSquare className="size-3.5" />
-            Query table
-          </Link>
-        </Button>
+
+        <Link
+          className={buttonVariants({
+            variant: "primary",
+            className: "gap-2 text-xs",
+          })}
+          href={`/query?sql=${encodeURIComponent(tableSql(namespace, name))}`}
+        >
+          <TerminalSquare className="size-3.5" />
+          Query table
+        </Link>
       </PageHeading>
       {error && <ErrorBanner message={error} onRetry={() => load()} />}
       {loading && !table ? (
@@ -239,24 +245,27 @@ export function TableDetail({
                   value: `Iceberg v${table.format_version}`,
                 },
               ].map((item) => (
-                <div key={item.label} className="panel p-5">
+                <Card key={item.label} className="panel p-5">
                   <p className="text-xs text-muted-foreground">{item.label}</p>
                   <p className="mt-3 text-xl font-medium">{item.value}</p>
-                </div>
+                </Card>
               ))}
             </div>
-            <Tabs defaultValue="data">
-              <TabsList className="mb-5">
-                <TabsTrigger value="data">Data preview</TabsTrigger>
-                <TabsTrigger value="schema">
+            <Tabs defaultSelectedKey="data">
+              <TabsList aria-label="Table details" className="mb-5">
+                <TabsTrigger id="data">Data preview</TabsTrigger>
+                <TabsTrigger id="schema">
                   Schema
                   <span className="text-[10px]">{table.columns.length}</span>
                 </TabsTrigger>
-                <TabsTrigger value="metadata">Metadata</TabsTrigger>
-                <TabsTrigger value="manage">Manage</TabsTrigger>
+                <TabsTrigger id="metadata">Metadata</TabsTrigger>
+                <TabsTrigger id="manage">Manage</TabsTrigger>
               </TabsList>
-              <TabsContent value="data">
-                <section className="panel overflow-hidden">
+              <TabsContent id="data">
+                <Card
+                  render={(props) => <section {...props} />}
+                  className="panel overflow-hidden"
+                >
                   <form
                     className="flex flex-wrap items-center gap-3 border-b p-4"
                     onSubmit={(e) => {
@@ -272,21 +281,18 @@ export function TableDetail({
                       value={filter}
                       onChange={(e) => setFilter(e.target.value)}
                     />
-                    <select
-                      aria-label="Preview limit"
-                      className="native-select"
-                      value={limit}
-                      onChange={(e) => setLimit(Number(e.target.value))}
-                    >
-                      {[100, 500, 1000].map((n) => (
-                        <option key={n} value={n}>
-                          {n} rows
-                        </option>
-                      ))}
-                    </select>
+                    <SelectField
+                      label="Preview limit"
+                      value={String(limit)}
+                      onChange={(value) => setLimit(Number(value))}
+                      options={[100, 500, 1000].map((n) => ({
+                        value: String(n),
+                        label: `${n} rows`,
+                      }))}
+                    />
                     <Button
-                      variant="outline"
-                      disabled={rowsLoading}
+                      variant="tertiary"
+                      isDisabled={rowsLoading}
                       type="submit"
                     >
                       Apply filter
@@ -304,16 +310,19 @@ export function TableDetail({
                       <RowsGrid data={rows} filename={`${namespace}.${name}`} />
                     )
                   )}
-                </section>
+                </Card>
               </TabsContent>
-              <TabsContent value="schema">
-                <section className="panel overflow-hidden">
+              <TabsContent id="schema">
+                <Card
+                  render={(props) => <section {...props} />}
+                  className="panel overflow-hidden"
+                >
                   <div className="panel-title">
                     <h2 className="text-xs font-medium">Columns</h2>
                     <Button
-                      variant="outline"
+                      variant="tertiary"
                       size="sm"
-                      onClick={() => open("column")}
+                      onPress={() => open("column")}
                     >
                       <Plus className="size-3" />
                       Add column
@@ -345,10 +354,13 @@ export function TableDetail({
                       </tbody>
                     </table>
                   </div>
-                </section>
+                </Card>
               </TabsContent>
-              <TabsContent value="metadata">
-                <section className="panel p-5">
+              <TabsContent id="metadata">
+                <Card
+                  render={(props) => <section {...props} />}
+                  className="panel p-5"
+                >
                   <h2 className="mb-5 text-sm font-medium">Table metadata</h2>
                   <dl className="space-y-4">
                     {[
@@ -380,15 +392,18 @@ export function TableDetail({
                   <h3 className="mb-3 mt-6 text-xs font-medium">
                     Table properties
                   </h3>
-                  <div className="overflow-auto rounded-md border bg-muted/40 p-4">
+                  <div className="overflow-auto rounded-md border bg-surface-secondary/40 p-4">
                     <pre className="font-mono text-xs leading-6">
                       {JSON.stringify(table.properties, null, 2)}
                     </pre>
                   </div>
-                </section>
+                </Card>
               </TabsContent>
-              <TabsContent value="manage">
-                <section className="panel divide-y">
+              <TabsContent id="manage">
+                <Card
+                  render={(props) => <section {...props} />}
+                  className="panel divide-y"
+                >
                   {[
                     {
                       title: "Rename table",
@@ -432,23 +447,23 @@ export function TableDetail({
                       <Button
                         variant={
                           item.kind === "drop" || item.kind === "deleteRows"
-                            ? "destructive"
-                            : "outline"
+                            ? "danger"
+                            : "tertiary"
                         }
-                        onClick={() => open(item.kind)}
+                        onPress={() => open(item.kind)}
                       >
                         {item.action}
                       </Button>
                     </div>
                   ))}
-                </section>
+                </Card>
               </TabsContent>
             </Tabs>
           </>
         )
       )}
       <Dialog
-        open={!!dialog}
+        isOpen={!!dialog}
         onOpenChange={(value) => {
           if (!value && !busy) setDialog(null);
         }}
@@ -487,7 +502,7 @@ export function TableDetail({
               <p className="field-error">
                 {rename.formState.errors.name?.message}
               </p>
-              <Button disabled={busy} className="w-full">
+              <Button type="submit" isDisabled={busy} className="w-full">
                 {busy ? "Saving…" : "Save name"}
               </Button>
             </form>
@@ -502,7 +517,7 @@ export function TableDetail({
               <label className="field-label" htmlFor="append-json">
                 JSON array of rows
               </label>
-              <textarea
+              <TextArea
                 id="append-json"
                 className="min-h-48 w-full rounded-md border p-3 font-mono text-xs leading-6"
                 {...append.register("json")}
@@ -510,7 +525,7 @@ export function TableDetail({
               <p className="field-error">
                 {append.formState.errors.json?.message}
               </p>
-              <Button disabled={busy} className="w-full">
+              <Button type="submit" isDisabled={busy} className="w-full">
                 {busy ? "Writing…" : "Append rows"}
               </Button>
             </form>
@@ -532,12 +547,12 @@ export function TableDetail({
               <label className="field-label" htmlFor="column-type">
                 Column type
               </label>
-              <select
+              <FormSelect
+                control={column.control}
+                name="type"
                 id="column-type"
-                className="native-select w-full"
-                {...column.register("type")}
-              >
-                {[
+                label="Column type"
+                options={[
                   "string",
                   "long",
                   "int",
@@ -546,14 +561,13 @@ export function TableDetail({
                   "date",
                   "timestamp",
                   "timestamptz",
-                ].map((t) => (
-                  <option key={t}>{t}</option>
-                ))}
-              </select>
+                ].map((t) => ({ value: t, label: t }))}
+                isDisabled={busy}
+              />
               <p className="text-xs text-muted-foreground">
                 The new column is nullable. Existing rows will contain NULL.
               </p>
-              <Button disabled={busy} className="w-full">
+              <Button type="submit" isDisabled={busy} className="w-full">
                 {busy ? "Adding…" : "Add column"}
               </Button>
             </form>
@@ -583,20 +597,20 @@ export function TableDetail({
               />
               <div className="flex justify-end gap-2">
                 <Button
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => setDialog(null)}
+                  variant="tertiary"
+                  isDisabled={busy}
+                  onPress={() => setDialog(null)}
                 >
                   Cancel
                 </Button>
                 <Button
-                  variant="destructive"
-                  disabled={
+                  variant="danger"
+                  isDisabled={
                     busy ||
                     confirmation !== `${namespace}.${name}` ||
                     (dialog === "deleteRows" && !deleteFilter.trim())
                   }
-                  onClick={() =>
+                  onPress={() =>
                     mutate(
                       null,
                       "DELETE",

@@ -31,22 +31,22 @@ export function RowsGrid({
   }
   return (
     <>
-      <div className="flex items-center justify-between border-b px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-5 py-3">
         <span className="text-xs text-muted-foreground">
           {number(data.row_count)} rows · {data.columns.length} columns
         </span>
         <Button
           variant="ghost"
           size="sm"
-          onClick={download}
-          disabled={!data.columns.length}
+          onPress={download}
+          isDisabled={!data.columns.length}
         >
           <Download className="size-3.5" />
           Export CSV
         </Button>
       </div>
       <div className="max-h-[480px] overflow-auto">
-        <table className="data-table">
+        <table className="data-table" aria-label="Query result rows">
           <thead className="sticky top-0">
             <tr>
               <th className="w-12">#</th>
@@ -85,17 +85,17 @@ export function RowsGrid({
           Page {page + 1} of {maxPage + 1}
         </span>
         <Button
-          variant="outline"
+          variant="tertiary"
           size="sm"
-          disabled={page === 0}
-          onClick={() => setPage(page - 1)}
+          isDisabled={page === 0}
+          onPress={() => setPage(page - 1)}
         >
           Previous
         </Button>
         <Button
-          variant="outline"
+          variant="tertiary"
           size="sm"
-          disabled={page >= maxPage}
+          isDisabled={page >= maxPage}
           onClick={() => setPage(page + 1)}
         >
           Next

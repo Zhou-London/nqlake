@@ -1,4 +1,5 @@
 "use client";
+import { Card, Chip } from "@heroui/react";
 import {
   Activity,
   CheckCircle2,
@@ -49,18 +50,18 @@ export default function Services() {
       <PageHeading
         eyebrow=""
         title="Services"
-        description=""
+        description="Monitor the services that power your local lakehouse."
       >
         <RefreshButton loading={loading} onClick={refresh} />
       </PageHeading>
       {statusError && <ErrorBanner message={statusError} onRetry={refresh} />}
-      <div className="panel mb-6 flex items-center gap-4 p-6">
+      <Card className="panel mb-6 flex flex-row items-center gap-4 p-6">
         <div
           className={cn(
             "flex size-12 items-center justify-center rounded-xl",
             status?.ok
               ? "bg-emerald-50 text-emerald-600"
-              : "bg-muted text-muted-foreground",
+              : "bg-surface-secondary text-muted-foreground",
           )}
         >
           {status?.ok ? (
@@ -80,37 +81,39 @@ export default function Services() {
                   : "Waiting for the data service"}
           </h2>
         </div>
-      </div>
+      </Card>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {services.map((item) => {
           const state = status?.services.find((s) => s.name === item.name);
           return (
-            <section
+            <Card
+              render={(props) => <section {...props} />}
               key={item.name}
               className="panel flex min-h-52 flex-col p-5"
             >
               <div className="mb-5 flex items-center justify-between">
-                <div className="flex size-10 items-center justify-center rounded-lg border bg-muted/50 text-primary">
+                <div className="flex size-10 items-center justify-center rounded-lg border bg-surface-secondary/50 text-primary">
                   <item.icon size={20} strokeWidth={1.5} />
                 </div>
-                <span
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px]",
-                    state?.ok
-                      ? "bg-emerald-50 text-emerald-600"
-                      : state
-                        ? "bg-amber-50 text-amber-700"
-                        : "bg-muted text-muted-foreground",
-                  )}
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  color={
+                    loading || !state
+                      ? "default"
+                      : state.ok
+                        ? "success"
+                        : "warning"
+                  }
                 >
                   <span
                     className={cn(
-                      "size-1.5 rounded-full",
-                      state?.ok
-                        ? "bg-emerald-500"
-                        : state
-                          ? "bg-amber-500"
-                          : "bg-slate-300",
+                      "mr-1.5 size-1.5 rounded-full",
+                      loading || !state
+                        ? "bg-slate-400"
+                        : state.ok
+                          ? "bg-emerald-500"
+                          : "bg-amber-500",
                     )}
                   />
                   {loading
@@ -120,7 +123,7 @@ export default function Services() {
                       : state
                         ? "Degraded"
                         : "Disconnected"}
-                </span>
+                </Chip>
               </div>
               <h3 className="text-sm font-medium">{item.title}</h3>
               <p className="mt-1 text-[11px] text-muted-foreground">
@@ -140,7 +143,7 @@ export default function Services() {
                         : "Local service"}
                 </p>
               </div>
-            </section>
+            </Card>
           );
         })}
       </div>

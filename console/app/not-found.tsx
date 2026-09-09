@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@heroui/styles";
 export default function NotFound() {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center">
@@ -9,12 +9,17 @@ export default function NotFound() {
       <p className="mb-6 mt-3 text-sm text-muted-foreground">
         This page may have moved. Return to your workspace to continue.
       </p>
-      <Button asChild>
-        <Link href="/">
-          <ArrowLeft className="size-4" />
-          Back to overview
-        </Link>
-      </Button>
+
+      <Link
+        href="/"
+        className={buttonVariants({
+          variant: "primary",
+          className: "gap-2 text-xs",
+        })}
+      >
+        <ArrowLeft className="size-4" />
+        Back to overview
+      </Link>
     </div>
   );
 }

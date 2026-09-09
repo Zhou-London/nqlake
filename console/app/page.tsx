@@ -1,4 +1,5 @@
 "use client";
+import { Card, Skeleton } from "@heroui/react";
 
 import Link from "next/link";
 import { Activity, ArrowRight, FolderOpen, Layers, Table2 } from "lucide-react";
@@ -51,6 +52,14 @@ export default function Overview() {
         ? "Known row counts only"
         : "From current table snapshots",
     },
+    {
+      label: "Healthy services",
+      value: status ? `${healthy} / ${status.services.length}` : "—",
+      icon: Activity,
+      note: status?.ok
+        ? "All services are operational"
+        : "View service health and connectivity",
+    },
   ];
 
   return (
@@ -58,7 +67,7 @@ export default function Overview() {
       <PageHeading
         eyebrow=""
         title="Overview"
-        description=""
+        description="Your lakehouse at a glance. Explore your data and keep things running smoothly."
       >
         <RefreshButton loading={loading} onClick={refresh} />
       </PageHeading>
@@ -69,7 +78,10 @@ export default function Overview() {
       )}
       <div className="mb-7 grid grid-cols-2 gap-3 xl:grid-cols-4 xl:gap-4">
         {stats.map((stat) => (
-          <div key={stat.label} className="panel p-4 lg:p-5">
+          <Card
+            key={stat.label}
+            className="panel p-4 transition-shadow hover:shadow-md lg:p-5"
+          >
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">
                 {stat.label}
@@ -77,12 +89,12 @@ export default function Overview() {
               <stat.icon
                 size={16}
                 strokeWidth={1.6}
-                className="shrink-0 text-[#8795ab]"
+                className="size-9 shrink-0 rounded-xl bg-accent-soft p-2 text-primary"
               />
             </div>
             <div className="mb-4 mt-5 text-2xl font-medium leading-none tracking-tight sm:text-[29px] xl:text-[34px]">
               {loading && !available ? (
-                <span className="inline-block h-8 w-16 animate-pulse rounded bg-muted" />
+                <Skeleton className="h-8 w-16 rounded-lg" />
               ) : (
                 stat.value
               )}
@@ -90,10 +102,13 @@ export default function Overview() {
             <p className="border-t pt-3 text-[10px] leading-4 text-muted-foreground">
               {stat.note}
             </p>
-          </div>
+          </Card>
         ))}
       </div>
-      <section className="panel overflow-hidden">
+      <Card
+        render={(props) => <section {...props} />}
+        className="panel overflow-hidden"
+      >
         <div className="panel-title">
           <h2 className="text-sm font-medium">Recently updated tables</h2>
           <Link
@@ -130,7 +145,7 @@ export default function Overview() {
             {updated.toLocaleTimeString("en-US", { hour12: false })}
           </div>
         )}
-      </section>
+      </Card>
     </>
   );
 }

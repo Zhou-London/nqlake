@@ -1,4 +1,6 @@
 "use client";
+import { Card, Spinner } from "@heroui/react";
+import { FormSelect } from "@/components/ui/select";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -6,7 +8,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Check,
   Code2,
-  Database,
   History,
   Loader2,
   Play,
@@ -97,7 +98,7 @@ export default function Query() {
       <PageHeading
         eyebrow=""
         title="SQL workspace"
-        description=""
+        description="Explore your lakehouse with SQL and turn data into answers."
       >
         <span className="mr-2 flex items-center gap-1.5 text-xs text-muted-foreground">
           <span
@@ -105,17 +106,20 @@ export default function Query() {
           />
           DuckDB · Read-only
         </span>
-        <Button variant="outline" onClick={() => setHistoryOpen(!historyOpen)}>
+        <Button variant="tertiary" onPress={() => setHistoryOpen(!historyOpen)}>
           <History className="size-3.5" />
           Query history{" "}
           <span className="text-muted-foreground">{history.length}</span>
         </Button>
       </PageHeading>
       <div className="grid gap-5 xl:grid-cols-[220px_1fr]">
-        <aside className="panel self-start">
+        <Card
+          render={(props) => <aside {...props} />}
+          className="panel self-start"
+        >
           <div className="p-3">
             <div className="relative">
-              <Search className="absolute left-2.5 top-3 size-3.5 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-2.5 top-3 z-10 size-3.5 text-muted-foreground" />
               <Input
                 aria-label="Search available tables"
                 className="pl-8 text-xs"
@@ -145,7 +149,7 @@ export default function Query() {
                         onClick={() =>
                           form.setValue("sql", tableSql(ns, t.name))
                         }
-                        className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-accent hover:text-primary"
+                        className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-accent-soft hover:text-primary"
                       >
                         <Table2 size={13} />
                         <span className="truncate">{t.name}</span>
@@ -162,7 +166,7 @@ export default function Query() {
               </p>
             )}
           </div>
-        </aside>
+        </Card>
         <div className="min-w-0 space-y-5">
           <form
             onSubmit={form.handleSubmit(run)}
@@ -219,7 +223,7 @@ export default function Query() {
               </p>
             )}
             <div className="flex flex-wrap items-center gap-3 border-t px-4 py-3">
-              <Button type="submit" disabled={running}>
+              <Button type="submit" isDisabled={running}>
                 {running ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (
@@ -230,8 +234,8 @@ export default function Query() {
               {running && (
                 <Button
                   type="button"
-                  variant="outline"
-                  onClick={() => controller.current?.abort()}
+                  variant="tertiary"
+                  onPress={() => controller.current?.abort()}
                 >
                   <Square className="size-3" />
                   Stop waiting
@@ -240,24 +244,27 @@ export default function Query() {
               <kbd className="hidden text-[10px] text-muted-foreground sm:block">
                 ⌘ / Ctrl ↵
               </kbd>
-              <label className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
+              <div className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
                 Row limit
-                <select
-                  className="native-select h-8"
-                  disabled={running}
-                  {...form.register("limit", { valueAsNumber: true })}
-                >
-                  {[100, 500, 1000, 10000].map((n) => (
-                    <option key={n} value={n}>
-                      {n} rows
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <FormSelect
+                  control={form.control}
+                  name="limit"
+                  label="Row limit"
+                  valueAsNumber
+                  isDisabled={running}
+                  options={[100, 500, 1000, 10000].map((n) => ({
+                    value: String(n),
+                    label: `${n} rows`,
+                  }))}
+                />
+              </div>
             </div>
           </form>
           {error && <ErrorBanner message={error} />}
-          <section className="panel overflow-hidden">
+          <Card
+            render={(props) => <section {...props} />}
+            className="panel overflow-hidden"
+          >
             <div className="panel-title">
               <h2 className="text-xs font-medium">Results</h2>
               {elapsed != null && (
@@ -273,7 +280,7 @@ export default function Query() {
                 role="status"
                 className="flex min-h-52 flex-col items-center justify-center gap-3 text-xs text-muted-foreground"
               >
-                <Loader2 className="animate-spin text-primary" />
+                <Spinner size="md" aria-label="Running query" />
                 Running query…
               </div>
             ) : result ? (
@@ -285,16 +292,16 @@ export default function Query() {
                 description="Write SQL or select a table, then run your query."
               />
             )}
-          </section>
+          </Card>
           {historyOpen && (
-            <section className="panel">
+            <Card render={(props) => <section {...props} />} className="panel">
               <div className="panel-title">
                 <h2 className="text-xs font-medium">Session query history</h2>
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={!history.length}
-                  onClick={() => setHistory([])}
+                  isDisabled={!history.length}
+                  onPress={() => setHistory([])}
                 >
                   Clear history
                 </Button>
@@ -310,7 +317,7 @@ export default function Query() {
                     disabled={running}
                     key={i}
                     onClick={() => form.setValue("sql", item.sql)}
-                    className="flex w-full items-center justify-between gap-4 border-t p-4 text-left hover:bg-muted"
+                    className="flex w-full items-center justify-between gap-4 border-t p-4 text-left hover:bg-surface-secondary"
                   >
                     <code className="truncate text-xs">{item.sql}</code>
                     <span className="shrink-0 text-[10px] text-muted-foreground">
@@ -319,7 +326,7 @@ export default function Query() {
                   </button>
                 ))
               )}
-            </section>
+            </Card>
           )}
         </div>
       </div>

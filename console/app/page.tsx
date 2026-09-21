@@ -1,15 +1,24 @@
 "use client";
-import { Card, Skeleton } from "@heroui/react";
-
-import Link from "next/link";
-import { Activity, ArrowRight, FolderOpen, Layers, Table2 } from "lucide-react";
 import {
-  PageHeading,
-  ErrorBanner,
-  EmptyState,
-  LoadingState,
-  RefreshButton,
-} from "@/components/shared";
+  Alert,
+  Card,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+  KpiCard,
+  Link,
+  PageContent,
+  PageHeader,
+  Button,
+} from "@nowquant/nqui";
+import {
+  Activity,
+  ArrowRight,
+  FolderOpen,
+  Layers,
+  RefreshCw,
+  Table2,
+} from "lucide-react";
 import { TableList } from "@/components/table-list";
 import { useLake } from "@/components/lake-provider";
 import { number } from "@/lib/utils";
@@ -35,19 +44,19 @@ export default function Overview() {
     {
       label: "Tables",
       value: available ? number(tables.length) : "—",
-      icon: Table2,
+      icon: <Table2 />,
       note: "Apache Iceberg tables",
     },
     {
       label: "Namespaces",
       value: available ? number(namespaces.length) : "—",
-      icon: FolderOpen,
+      icon: <FolderOpen />,
       note: "Across your data catalog",
     },
     {
       label: "Total rows",
       value: available ? number(totalRows) : "—",
-      icon: Layers,
+      icon: <Layers />,
       note: tables.some((table) => table.row_count == null)
         ? "Known row counts only"
         : "From current table snapshots",
@@ -55,97 +64,80 @@ export default function Overview() {
     {
       label: "Healthy services",
       value: status ? `${healthy} / ${status.services.length}` : "—",
-      icon: Activity,
+      icon: <Activity />,
       note: status?.ok
         ? "All services are operational"
         : "View service health and connectivity",
     },
   ];
+  const recent = [...tables]
+    .sort((a, b) => (b.snapshot_at || "").localeCompare(a.snapshot_at || ""))
+    .slice(0, 5);
 
   return (
     <>
-      <PageHeading
-        eyebrow=""
+      <PageHeader
         title="Overview"
         description="Your lakehouse at a glance. Explore your data and keep things running smoothly."
-      >
-        <RefreshButton loading={loading} onClick={refresh} />
-      </PageHeading>
-      {(error || statusError) && (
-        <ErrorBanner
-          message={`${error || statusError}${updated ? " Showing previously loaded data." : ""}`}
-        />
-      )}
-      <div className="mb-7 grid grid-cols-2 gap-3 xl:grid-cols-4 xl:gap-4">
-        {stats.map((stat) => (
-          <Card
-            key={stat.label}
-            className="panel p-4 transition-shadow hover:shadow-md lg:p-5"
+        actions={
+          <Button
+            variant="outline"
+            startContent={<RefreshCw />}
+            isLoading={loading}
+            onPress={refresh}
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">
-                {stat.label}
-              </span>
-              <stat.icon
-                size={16}
-                strokeWidth={1.6}
-                className="size-9 shrink-0 rounded-xl bg-accent-soft p-2 text-primary"
-              />
-            </div>
-            <div className="mb-4 mt-5 text-2xl font-medium leading-none tracking-tight sm:text-[29px] xl:text-[34px]">
-              {loading && !available ? (
-                <Skeleton className="h-8 w-16 rounded-lg" />
-              ) : (
-                stat.value
-              )}
-            </div>
-            <p className="border-t pt-3 text-[10px] leading-4 text-muted-foreground">
-              {stat.note}
-            </p>
-          </Card>
-        ))}
-      </div>
-      <Card
-        render={(props) => <section {...props} />}
-        className="panel overflow-hidden"
-      >
-        <div className="panel-title">
-          <h2 className="text-sm font-medium">Recently updated tables</h2>
-          <Link
-            href="/catalog"
-            className="flex shrink-0 items-center gap-1.5 text-xs text-primary"
-          >
-            View catalog <ArrowRight size={13} />
-          </Link>
-        </div>
-        {loading && !available ? (
-          <LoadingState />
-        ) : tables.length ? (
-          <TableList
-            tables={[...tables]
-              .sort((a, b) =>
-                (b.snapshot_at || "").localeCompare(a.snapshot_at || ""),
-              )
-              .slice(0, 5)}
-          />
-        ) : (
-          <EmptyState
-            icon={Table2}
-            title={error ? "Waiting for your data" : "No tables yet"}
+            Refresh
+          </Button>
+        }
+      />
+      <PageContent>
+        {(error || statusError) && (
+          <Alert
+            color="warning"
+            title={error || statusError}
             description={
+              updated ? "Showing previously loaded data." : undefined
+            }
+          />
+        )}
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          {stats.map((stat) => (
+            <KpiCard
+              key={stat.label}
+              label={stat.label}
+              value={stat.value}
+              icon={stat.icon}
+              caption={stat.note}
+              isLoading={loading && !available}
+            />
+          ))}
+        </div>
+        <Card>
+          <CardHeader className="items-center">
+            <CardTitle>Recently updated tables</CardTitle>
+            <Link href="/catalog" className="text-sm">
+              View catalog
+              <ArrowRight />
+            </Link>
+          </CardHeader>
+          <TableList
+            tables={recent}
+            isLoading={loading && !available}
+            emptyTitle={error ? "Waiting for your data" : "No tables yet"}
+            emptyDescription={
               error
                 ? "Connect the data service and refresh to load your catalog."
                 : "Create a namespace in the catalog, then add a table or import a Parquet file."
             }
           />
-        )}
-        {updated && (
-          <div className="border-t px-5 py-3 text-[10px] text-muted-foreground">
-            Last synced at{" "}
-            {updated.toLocaleTimeString("en-US", { hour12: false })}
-          </div>
-        )}
-      </Card>
+          {updated && (
+            <CardFooter className="text-muted text-xs">
+              Last synced at{" "}
+              {updated.toLocaleTimeString("en-US", { hour12: false })}
+            </CardFooter>
+          )}
+        </Card>
+      </PageContent>
     </>
   );
 }

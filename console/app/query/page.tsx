@@ -1,34 +1,44 @@
 "use client";
-import { Card, Spinner } from "@heroui/react";
-import { FormSelect } from "@/components/ui/select";
-import { useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Check,
-  Code2,
-  History,
-  Loader2,
-  Play,
-  Search,
-  Square,
-  Table2,
-  TerminalSquare,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { PageHeading, EmptyState, ErrorBanner } from "@/components/shared";
+  Alert,
+  Button,
+  Card,
+  CardHeader,
+  CardTitle,
+  Cell,
+  Chip,
+  Code,
+  Column,
+  EmptyState,
+  PageContent,
+  PageHeader,
+  Row,
+  SchemaTree,
+  SearchField,
+  Select,
+  SelectItem,
+  Spinner,
+  StatusDot,
+  Table,
+  TableBody,
+  TableContainer,
+  TableHeader,
+  type SchemaNode,
+} from "@nowquant/nqui";
+import { SqlEditor, type SQLNamespace } from "@nowquant/nqui/sql";
+import { Check, History, Square, TerminalSquare } from "lucide-react";
 import { RowsGrid } from "@/components/rows-grid";
 import { useLake } from "@/components/lake-provider";
 import { api, tableSql, type Rows } from "@/lib/api";
-const schema = z.object({
-  sql: z.string().trim().min(1, "Enter a SQL query."),
-  limit: z.number().int().min(1).max(10000),
-});
+
 type HistoryItem = { sql: string; time: string; elapsed: number; rows: number };
+const DEFAULT_SQL = "-- Start exploring your data here\nSELECT 1 AS ready;";
+
 export default function Query() {
   const { namespaces, tables, status } = useLake();
+  const [sql, setSql] = useState(DEFAULT_SQL);
+  const [limit, setLimit] = useState("100");
   const [term, setTerm] = useState("");
   const [result, setResult] = useState<Rows | null>(null);
   const [error, setError] = useState("");
@@ -36,24 +46,61 @@ export default function Query() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [running, setRunning] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string | number> | null>(null);
   const controller = useRef<AbortController | null>(null);
-  const lock = useRef(false);
-  const form = useForm<z.infer<typeof schema>>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      sql: "-- Start exploring your data here\nSELECT 1 AS ready;",
-      limit: 100,
-    },
-  });
-  const sql = form.watch("sql");
+  const duckdb = status?.services.find((s) => s.name === "duckdb")?.ok;
+
   useEffect(() => {
     const initial = new URLSearchParams(window.location.search).get("sql");
-    if (initial) form.setValue("sql", initial);
+    if (initial) setSql(initial);
     return () => controller.current?.abort();
-  }, [form]);
-  async function run(values: z.infer<typeof schema>) {
-    if (lock.current) return;
-    lock.current = true;
+  }, []);
+
+  const nodes = useMemo<SchemaNode[]>(
+    () =>
+      namespaces.map((ns) => ({
+        id: `ns:${ns}`,
+        name: ns,
+        kind: "schema",
+        children: tables
+          .filter((t) => t.namespace === ns)
+          .map((t) => ({
+            id: `table:${ns}.${t.name}`,
+            name: t.name,
+            kind: "table",
+            children: t.columns.map((c) => ({
+              id: `column:${ns}.${t.name}.${c.name}`,
+              name: c.name,
+              kind: "column",
+              dataType: c.type,
+            })),
+          })),
+      })),
+    [namespaces, tables],
+  );
+  const schema = useMemo<SQLNamespace>(
+    () => ({
+      lake: Object.fromEntries(
+        namespaces.map((ns) => [
+          ns,
+          Object.fromEntries(
+            tables
+              .filter((t) => t.namespace === ns)
+              .map((t) => [t.name, t.columns.map((c) => c.name)]),
+          ),
+        ]),
+      ),
+    }),
+    [namespaces, tables],
+  );
+
+  async function run(query: string) {
+    if (running) return;
+    const text = query.trim();
+    if (!text) {
+      setError("Enter a SQL query.");
+      return;
+    }
     setRunning(true);
     setError("");
     setResult(null);
@@ -64,7 +111,7 @@ export default function Query() {
     try {
       const data = await api<Rows>("/query", {
         method: "POST",
-        body: JSON.stringify(values),
+        body: JSON.stringify({ sql: text, limit: Number(limit) }),
         signal: abort.signal,
       });
       const duration = Math.round(performance.now() - start);
@@ -73,7 +120,7 @@ export default function Query() {
       setHistory((items) =>
         [
           {
-            sql: values.sql,
+            sql: text,
             time: new Date().toLocaleTimeString("en-US"),
             elapsed: duration,
             rows: data.row_count,
@@ -89,247 +136,203 @@ export default function Query() {
       );
     } finally {
       setRunning(false);
-      lock.current = false;
       controller.current = null;
     }
   }
+  function pick(keys: "all" | Iterable<string | number>) {
+    if (keys === "all") return;
+    const key = String(Array.from(keys)[0] ?? "");
+    if (!key.startsWith("table:")) return;
+    const [ns, name] = key.slice(6).split(/\.(.*)/s);
+    setSql(tableSql(ns, name));
+  }
+
   return (
     <>
-      <PageHeading
-        eyebrow=""
+      <PageHeader
         title="SQL workspace"
         description="Explore your lakehouse with SQL and turn data into answers."
-      >
-        <span className="mr-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span
-            className={`size-1.5 rounded-full ${status?.services.find((s) => s.name === "duckdb")?.ok ? "bg-emerald-500" : "bg-slate-300"}`}
-          />
-          DuckDB · Read-only
-        </span>
-        <Button variant="tertiary" onPress={() => setHistoryOpen(!historyOpen)}>
-          <History className="size-3.5" />
-          Query history{" "}
-          <span className="text-muted-foreground">{history.length}</span>
-        </Button>
-      </PageHeading>
-      <div className="grid gap-5 xl:grid-cols-[220px_1fr]">
-        <Card
-          render={(props) => <aside {...props} />}
-          className="panel self-start"
-        >
-          <div className="p-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-3 z-10 size-3.5 text-muted-foreground" />
-              <Input
+        actions={
+          <>
+            <StatusDot
+              status={duckdb ? "healthy" : status ? "down" : "unknown"}
+              label="DuckDB · Read-only"
+            />
+            <Button
+              variant="outline"
+              startContent={<History />}
+              endContent={
+                <Chip size="sm" color="neutral">
+                  {history.length}
+                </Chip>
+              }
+              onPress={() => setHistoryOpen(!historyOpen)}
+            >
+              Query history
+            </Button>
+          </>
+        }
+      />
+      <PageContent>
+        <div className="grid items-start gap-6 xl:grid-cols-[260px_1fr]">
+          <Card className="xl:sticky xl:top-0">
+            <div className="flex flex-col gap-2 p-2">
+              <SearchField
                 aria-label="Search available tables"
-                className="pl-8 text-xs"
+                size="sm"
                 placeholder="Find a table…"
                 value={term}
-                onChange={(e) => setTerm(e.target.value)}
+                onChange={setTerm}
               />
-            </div>
-          </div>
-          <div className="max-h-96 overflow-auto px-3 pb-4">
-            {namespaces.map((ns) => (
-              <details key={ns} open className="mb-2">
-                <summary className="cursor-pointer py-2 text-xs text-muted-foreground">
-                  {ns}
-                </summary>
-                <div className="ml-1 border-l pl-2">
-                  {tables
-                    .filter(
-                      (t) =>
-                        t.namespace === ns &&
-                        t.name.toLowerCase().includes(term.toLowerCase()),
-                    )
-                    .map((t) => (
-                      <button
-                        key={t.name}
-                        disabled={running}
-                        onClick={() =>
-                          form.setValue("sql", tableSql(ns, t.name))
-                        }
-                        className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-xs hover:bg-accent-soft hover:text-primary"
-                      >
-                        <Table2 size={13} />
-                        <span className="truncate">{t.name}</span>
-                      </button>
-                    ))}
-                </div>
-              </details>
-            ))}
-            {!namespaces.length && (
-              <p className="px-2 py-6 text-center text-[11px] leading-6 text-muted-foreground">
-                Connect to the data service
-                <br />
-                to choose a table here.
-              </p>
-            )}
-          </div>
-        </Card>
-        <div className="min-w-0 space-y-5">
-          <form
-            onSubmit={form.handleSubmit(run)}
-            className="panel overflow-hidden"
-          >
-            <div className="flex h-11 items-center justify-between border-b bg-[#fafbfc] px-4">
-              <span className="flex items-center gap-2 text-xs">
-                <Code2 size={14} className="text-primary" />
-                Untitled query{" "}
-                <span className="ml-2 size-1.5 rounded-full bg-blue-400" />
-              </span>
-              <span className="font-mono text-[10px] text-muted-foreground">
-                SQL
-              </span>
-            </div>
-            <div className="flex min-h-64 py-5">
-              <div
-                aria-hidden="true"
-                className="w-12 shrink-0 select-none text-right font-mono text-xs leading-7 text-[#b9c1ce]"
-              >
-                {sql.split("\n").map((_, i) => (
-                  <div key={i}>{i + 1}</div>
-                ))}
-              </div>
-              <textarea
-                aria-label="SQL editor"
-                spellCheck={false}
-                className="min-h-56 w-full resize-y bg-transparent px-5 font-mono text-[13px] leading-7 text-[#315181] outline-none focus-visible:outline-none"
-                {...form.register("sql")}
-                disabled={running}
-                onKeyDown={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                    e.preventDefault();
-                    void form.handleSubmit(run)();
-                  }
-                  if (e.key === "Tab") {
-                    e.preventDefault();
-                    const el = e.currentTarget;
-                    const start = el.selectionStart;
-                    form.setValue(
-                      "sql",
-                      sql.slice(0, start) + "  " + sql.slice(el.selectionEnd),
-                    );
-                    requestAnimationFrame(() => {
-                      el.selectionStart = el.selectionEnd = start + 2;
-                    });
-                  }
-                }}
-              />
-            </div>
-            {form.formState.errors.sql && (
-              <p className="field-error px-5 pb-3">
-                {form.formState.errors.sql.message}
-              </p>
-            )}
-            <div className="flex flex-wrap items-center gap-3 border-t px-4 py-3">
-              <Button type="submit" isDisabled={running}>
-                {running ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Play className="size-3.5" />
-                )}
-                {running ? "Running…" : "Run query"}
-              </Button>
-              {running && (
-                <Button
-                  type="button"
-                  variant="tertiary"
-                  onPress={() => controller.current?.abort()}
-                >
-                  <Square className="size-3" />
-                  Stop waiting
-                </Button>
-              )}
-              <kbd className="hidden text-[10px] text-muted-foreground sm:block">
-                ⌘ / Ctrl ↵
-              </kbd>
-              <div className="ml-auto flex items-center gap-2 text-[11px] text-muted-foreground">
-                Row limit
-                <FormSelect
-                  control={form.control}
-                  name="limit"
-                  label="Row limit"
-                  valueAsNumber
-                  isDisabled={running}
-                  options={[100, 500, 1000, 10000].map((n) => ({
-                    value: String(n),
-                    label: `${n} rows`,
-                  }))}
+              {namespaces.length ? (
+                <SchemaTree
+                  aria-label="Available tables"
+                  className="max-h-[28rem] overflow-auto"
+                  nodes={nodes}
+                  filter={term}
+                  expandedKeys={expanded ?? new Set(nodes.map((n) => n.id))}
+                  onExpandedChange={setExpanded}
+                  selectionMode="single"
+                  selectedKeys={new Set()}
+                  onSelectionChange={pick}
+                  onAction={(key) => pick([String(key)])}
                 />
-              </div>
-            </div>
-          </form>
-          {error && <ErrorBanner message={error} />}
-          <Card
-            render={(props) => <section {...props} />}
-            className="panel overflow-hidden"
-          >
-            <div className="panel-title">
-              <h2 className="text-xs font-medium">Results</h2>
-              {elapsed != null && (
-                <span className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                  <Check size={13} className="text-emerald-500" />
-                  Completed<span className="mx-1">·</span>
-                  {elapsed} ms (including network)
-                </span>
+              ) : (
+                <EmptyState
+                  size="sm"
+                  title="No tables yet"
+                  description="Connect to the data service to choose a table here."
+                />
               )}
             </div>
-            {running ? (
-              <div
-                role="status"
-                className="flex min-h-52 flex-col items-center justify-center gap-3 text-xs text-muted-foreground"
-              >
-                <Spinner size="md" aria-label="Running query" />
-                Running query…
-              </div>
-            ) : result ? (
-              <RowsGrid data={result} />
-            ) : (
-              <EmptyState
-                icon={TerminalSquare}
-                title="Your results appear here"
-                description="Write SQL or select a table, then run your query."
-              />
-            )}
           </Card>
-          {historyOpen && (
-            <Card render={(props) => <section {...props} />} className="panel">
-              <div className="panel-title">
-                <h2 className="text-xs font-medium">Session query history</h2>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  isDisabled={!history.length}
-                  onPress={() => setHistory([])}
-                >
-                  Clear history
-                </Button>
-              </div>
-              {!history.length ? (
-                <p className="p-8 text-center text-xs text-muted-foreground">
-                  Successful queries appear here. History clears when you leave
-                  this page.
-                </p>
-              ) : (
-                history.map((item, i) => (
-                  <button
-                    disabled={running}
-                    key={i}
-                    onClick={() => form.setValue("sql", item.sql)}
-                    className="flex w-full items-center justify-between gap-4 border-t p-4 text-left hover:bg-surface-secondary"
+          <div className="flex min-w-0 flex-col gap-6">
+            <SqlEditor
+              value={sql}
+              onChange={setSql}
+              dialect="postgresql"
+              schema={schema}
+              defaultSchema="lake"
+              minHeight={260}
+              maxHeight={520}
+              toolbar
+              isRunning={running}
+              onRun={(query) => void run(query)}
+              toolbarContent={
+                <div className="flex items-center gap-2">
+                  {running && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      startContent={<Square />}
+                      onPress={() => controller.current?.abort()}
+                    >
+                      Stop waiting
+                    </Button>
+                  )}
+                  <Select
+                    aria-label="Row limit"
+                    size="sm"
+                    className="w-32"
+                    isDisabled={running}
+                    selectedKey={limit}
+                    onSelectionChange={(key) => setLimit(String(key))}
                   >
-                    <code className="truncate text-xs">{item.sql}</code>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
-                      {item.time} · {item.rows} rows
-                    </span>
-                  </button>
-                ))
+                    {[100, 500, 1000, 10000].map((n) => (
+                      <SelectItem key={n} id={String(n)}>
+                        {`${n} rows`}
+                      </SelectItem>
+                    ))}
+                  </Select>
+                </div>
+              }
+            />
+            {error && (
+              <Alert color="error" title="Query failed" description={error} />
+            )}
+            <Card>
+              <CardHeader className="items-center">
+                <CardTitle>Results</CardTitle>
+                {elapsed != null && (
+                  <Chip color="success" startContent={<Check />}>
+                    Completed in {elapsed} ms
+                  </Chip>
+                )}
+              </CardHeader>
+              {running ? (
+                <div
+                  role="status"
+                  className="flex min-h-52 flex-col items-center justify-center gap-3 text-muted text-sm"
+                >
+                  <Spinner size="lg" color="primary" label="Running query" />
+                  Running query…
+                </div>
+              ) : result ? (
+                <RowsGrid data={result} />
+              ) : (
+                <EmptyState
+                  icon={<TerminalSquare />}
+                  title="Your results appear here"
+                  description="Write SQL or select a table, then run your query."
+                />
               )}
             </Card>
-          )}
+            {historyOpen && (
+              <Card>
+                <CardHeader className="items-center">
+                  <CardTitle>Session query history</CardTitle>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    isDisabled={!history.length}
+                    onPress={() => setHistory([])}
+                  >
+                    Clear history
+                  </Button>
+                </CardHeader>
+                {history.length ? (
+                  <TableContainer bare>
+                    <Table
+                      aria-label="Query history"
+                      density="compact"
+                      onRowAction={(key) => setSql(history[Number(key)].sql)}
+                    >
+                      <TableHeader>
+                        <Column isRowHeader>Query</Column>
+                        <Column>Time</Column>
+                        <Column align="end">Rows</Column>
+                        <Column align="end">Elapsed</Column>
+                      </TableHeader>
+                      <TableBody>
+                        {history.map((item, i) => (
+                          <Row key={i} id={i}>
+                            <Cell className="max-w-md">
+                              <Code>{item.sql}</Code>
+                            </Cell>
+                            <Cell className="text-muted">{item.time}</Cell>
+                            <Cell align="end" numeric>
+                              {item.rows}
+                            </Cell>
+                            <Cell align="end" numeric>
+                              {item.elapsed} ms
+                            </Cell>
+                          </Row>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                ) : (
+                  <EmptyState
+                    size="sm"
+                    title="No queries yet"
+                    description="Successful queries appear here. History clears when you leave this page."
+                  />
+                )}
+              </Card>
+            )}
+          </div>
         </div>
-      </div>
+      </PageContent>
     </>
   );
 }

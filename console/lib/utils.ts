@@ -1,12 +1,7 @@
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { formatNumber } from "@nowquant/nqui";
 
 export const number = (value: number | null | undefined) =>
-  value == null ? "—" : new Intl.NumberFormat("en-US").format(value);
+  value == null ? "—" : formatNumber(value);
 export const date = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat("en-US", {

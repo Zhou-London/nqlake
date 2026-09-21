@@ -1,325 +1,344 @@
 "use client";
-import { FormSelect } from "@/components/ui/select";
-import { useState } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Loader2, Plus, Trash2 } from "lucide-react";
-import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
-import { FormCheckbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { useState, type FormEvent } from "react";
 import {
+  Alert,
+  Button,
+  Checkbox,
   Dialog,
-  DialogContent,
-  DialogDescription,
+  DialogBody,
+  DialogFooter,
   DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Form,
+  IconButton,
+  Modal,
+  Select,
+  SelectItem,
+  TextField,
+  toast,
+} from "@nowquant/nqui";
+import { Plus, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useLake } from "@/components/lake-provider";
 
-const identifier = z
-  .string()
-  .trim()
-  .regex(
-    /^[a-zA-Z_][a-zA-Z0-9_]*$/,
-    "Use letters, numbers, and underscores. Start with a letter or underscore.",
-  );
-const namespaceSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .regex(
-      /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/,
-      "Enter a valid name, such as raw or raw.events.",
-    ),
-});
-const tableSchema = z.object({
-  namespace: z.string().min(1, "Select a namespace."),
-  name: identifier,
-  columns: z
-    .array(
-      z.object({
-        name: identifier,
-        type: z.string().min(1),
-        required: z.boolean(),
-      }),
-    )
-    .min(1)
-    .refine(
-      (cols) => new Set(cols.map((c) => c.name)).size === cols.length,
-      "Column names must be unique.",
-    ),
-});
+const IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const NAMESPACE = /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/;
+const IDENTIFIER_HINT =
+  "Use letters, numbers, and underscores. Start with a letter or underscore.";
+export const COLUMN_TYPES = [
+  "string",
+  "long",
+  "int",
+  "double",
+  "float",
+  "boolean",
+  "date",
+  "timestamp",
+  "timestamptz",
+  "uuid",
+  "binary",
+  "decimal(20,0)",
+];
+
 export function NewNamespaceButton({
-  variant = "tertiary",
+  variant = "outline",
 }: {
-  variant?: "tertiary" | "primary";
+  variant?: "outline" | "solid";
 }) {
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const { refresh } = useLake();
-  const form = useForm<z.infer<typeof namespaceSchema>>({
-    resolver: zodResolver(namespaceSchema),
-    defaultValues: { name: "" },
-  });
-  async function submit(values: z.infer<typeof namespaceSchema>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = String(new FormData(event.currentTarget).get("name") ?? "");
+    setBusy(true);
+    setError("");
     try {
       await api("/namespaces", {
         method: "POST",
-        body: JSON.stringify(values),
+        body: JSON.stringify({ name: name.trim() }),
       });
       toast.success("Namespace created.");
       setOpen(false);
-      form.reset();
       await refresh();
     } catch (err) {
-      form.setError("root", { message: (err as Error).message });
-    }
-  }
-  return (
-    <>
-      <Button variant={variant} onPress={() => setOpen(true)}>
-        <Plus className="size-3.5" />
-        New namespace
-      </Button>
-      <Dialog
-        isOpen={open}
-        onOpenChange={(value) => {
-          if (!form.formState.isSubmitting) setOpen(value);
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New namespace</DialogTitle>
-            <DialogDescription>
-              Group tables by source or domain. Use dots for nested namespaces.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={form.handleSubmit(submit)} className="space-y-5">
-            <div>
-              <label htmlFor="namespace-name" className="field-label">
-                Namespace name
-              </label>
-              <Input
-                id="namespace-name"
-                placeholder="e.g. raw or analytics"
-                {...form.register("name")}
-                aria-invalid={!!form.formState.errors.name}
-              />
-              <p className="field-error">
-                {form.formState.errors.name?.message}
-              </p>
-            </div>
-            {form.formState.errors.root && (
-              <p role="alert" className="field-error">
-                {form.formState.errors.root.message}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="tertiary"
-                isDisabled={form.formState.isSubmitting}
-                onPress={() => setOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" isDisabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting && (
-                  <Loader2 className="animate-spin" />
-                )}
-                Create namespace
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-export function NewTableButton({ namespace }: { namespace?: string }) {
-  const [open, setOpen] = useState(false);
-  const { namespaces, refresh } = useLake();
-  const form = useForm<z.infer<typeof tableSchema>>({
-    resolver: zodResolver(tableSchema),
-    defaultValues: {
-      namespace: namespace || "",
-      name: "",
-      columns: [{ name: "id", type: "long", required: true }],
-    },
-  });
-  const fields = useFieldArray({ control: form.control, name: "columns" });
-  async function submit(values: z.infer<typeof tableSchema>) {
-    try {
-      await api(`/namespaces/${encodeURIComponent(values.namespace)}/tables`, {
-        method: "POST",
-        body: JSON.stringify({ name: values.name, columns: values.columns }),
-      });
-      toast.success("Table created.");
-      setOpen(false);
-      form.reset();
-      await refresh();
-    } catch (err) {
-      form.setError("root", { message: (err as Error).message });
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
   return (
     <>
       <Button
-        isDisabled={!namespaces.length}
+        variant={variant}
+        startContent={<Plus />}
         onPress={() => {
-          form.setValue("namespace", namespace || namespaces[0] || "");
+          setError("");
           setOpen(true);
         }}
       >
-        <Plus className="size-3.5" />
-        New table
+        New namespace
       </Button>
-      <Dialog
+      <Modal
         isOpen={open}
         onOpenChange={(value) => {
-          if (!form.formState.isSubmitting) setOpen(value);
+          if (!busy) setOpen(value);
         }}
+        isDismissable={!busy}
+        isKeyboardDismissDisabled={busy}
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>New table</DialogTitle>
-            <DialogDescription>
-              Define columns to create an Apache Iceberg v2 table.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={form.handleSubmit(submit)} className="space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="table-namespace" className="field-label">
-                  Namespace
-                </label>
-                <FormSelect
-                  control={form.control}
-                  name="namespace"
-                  id="table-namespace"
-                  label="Namespace"
-                  options={namespaces.map((ns) => ({ value: ns, label: ns }))}
-                  isDisabled={form.formState.isSubmitting}
-                />
-                <p className="field-error">
-                  {form.formState.errors.namespace?.message}
-                </p>
-              </div>
-              <div>
-                <label htmlFor="table-name" className="field-label">
-                  Table name
-                </label>
-                <Input
-                  id="table-name"
-                  placeholder="e.g. events"
-                  {...form.register("name")}
-                />
-                <p className="field-error">
-                  {form.formState.errors.name?.message}
-                </p>
-              </div>
-            </div>
-            <div>
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-xs font-medium">Columns</h3>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onPress={() =>
-                    fields.append({ name: "", type: "string", required: false })
-                  }
-                >
-                  <Plus className="size-3" />
-                  Add column
-                </Button>
-              </div>
-              <div className="space-y-3">
-                {fields.fields.map((field, i) => (
-                  <div key={field.id}>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Input
-                        aria-label={`Column ${i + 1} name`}
-                        placeholder="Column name"
-                        {...form.register(`columns.${i}.name`)}
-                        className="min-w-0 flex-1"
-                      />
-                      <FormSelect
-                        control={form.control}
-                        name={`columns.${i}.type`}
-                        label={`Column ${i + 1} type`}
-                        className="w-28 shrink-0"
-                        options={[
-                          "string",
-                          "long",
-                          "int",
-                          "double",
-                          "float",
-                          "boolean",
-                          "date",
-                          "timestamp",
-                          "timestamptz",
-                          "uuid",
-                          "binary",
-                          "decimal(20,0)",
-                        ].map((t) => ({ value: t, label: t }))}
-                        isDisabled={form.formState.isSubmitting}
-                      />
-                      <FormCheckbox
-                        control={form.control}
-                        name={`columns.${i}.required`}
-                        isDisabled={form.formState.isSubmitting}
-                      >
-                        Required
-                      </FormCheckbox>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        isIconOnly
-                        aria-label={`Remove column ${i + 1}`}
-                        isDisabled={fields.fields.length === 1}
-                        onPress={() => fields.remove(i)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                    <p className="field-error">
-                      {form.formState.errors.columns?.[i]?.name?.message}
-                    </p>
-                  </div>
-                ))}
-              </div>
-              <p className="field-error">
-                {form.formState.errors.columns?.root?.message ||
-                  form.formState.errors.columns?.message}
-              </p>
-            </div>
-            {form.formState.errors.root && (
-              <p role="alert" className="field-error">
-                {form.formState.errors.root.message}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
+        <Dialog>
+          <Form onSubmit={submit} className="flex min-h-0 flex-col">
+            <DialogHeader
+              title="New namespace"
+              description="Group tables by source or domain. Use dots for nested namespaces."
+              showClose
+            />
+            <DialogBody className="flex flex-col gap-4">
+              {error && <Alert color="error" title={error} />}
+              <TextField
+                name="name"
+                label="Namespace name"
+                placeholder="e.g. raw or analytics"
+                autoFocus
+                isRequired
+                isDisabled={busy}
+                validate={(value) =>
+                  NAMESPACE.test(value.trim())
+                    ? null
+                    : "Enter a valid name, such as raw or raw.events."
+                }
+              />
+            </DialogBody>
+            <DialogFooter>
               <Button
-                type="button"
-                variant="tertiary"
-                isDisabled={form.formState.isSubmitting}
+                variant="ghost"
+                isDisabled={busy}
                 onPress={() => setOpen(false)}
               >
                 Cancel
               </Button>
-              <Button type="submit" isDisabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting && (
-                  <Loader2 className="animate-spin" />
-                )}
+              <Button type="submit" color="primary" isLoading={busy}>
+                Create namespace
+              </Button>
+            </DialogFooter>
+          </Form>
+        </Dialog>
+      </Modal>
+    </>
+  );
+}
+
+type ColumnDraft = {
+  key: number;
+  name: string;
+  type: string;
+  required: boolean;
+};
+
+export function NewTableButton({ namespace }: { namespace?: string }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [target, setTarget] = useState("");
+  const [columns, setColumns] = useState<ColumnDraft[]>([]);
+  const { namespaces, refresh } = useLake();
+  function reset() {
+    setError("");
+    setTarget(namespace || namespaces[0] || "");
+    setColumns([{ key: 0, name: "id", type: "long", required: true }]);
+  }
+  function update(key: number, patch: Partial<ColumnDraft>) {
+    setColumns((items) =>
+      items.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+    );
+  }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = String(new FormData(event.currentTarget).get("name") ?? "");
+    setBusy(true);
+    setError("");
+    try {
+      await api(`/namespaces/${encodeURIComponent(target)}/tables`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: name.trim(),
+          columns: columns.map(({ name, type, required }) => ({
+            name: name.trim(),
+            type,
+            required,
+          })),
+        }),
+      });
+      toast.success("Table created.");
+      setOpen(false);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <Button
+        color="primary"
+        startContent={<Plus />}
+        disabledReason={
+          namespaces.length ? undefined : "Create a namespace first"
+        }
+        onPress={() => {
+          reset();
+          setOpen(true);
+        }}
+      >
+        New table
+      </Button>
+      <Modal
+        size="lg"
+        isOpen={open}
+        onOpenChange={(value) => {
+          if (!busy) setOpen(value);
+        }}
+        isDismissable={!busy}
+        isKeyboardDismissDisabled={busy}
+      >
+        <Dialog>
+          <Form onSubmit={submit} className="flex min-h-0 flex-col">
+            <DialogHeader
+              title="New table"
+              description="Define columns to create an Apache Iceberg v2 table."
+              showClose
+            />
+            <DialogBody className="flex flex-col gap-6">
+              {error && <Alert color="error" title={error} />}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Select
+                  label="Namespace"
+                  name="namespace"
+                  isRequired
+                  isDisabled={busy}
+                  selectedKey={target}
+                  onSelectionChange={(key) => setTarget(String(key))}
+                >
+                  {namespaces.map((item) => (
+                    <SelectItem key={item} id={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </Select>
+                <TextField
+                  name="name"
+                  label="Table name"
+                  placeholder="e.g. events"
+                  isRequired
+                  isDisabled={busy}
+                  validate={(value) =>
+                    IDENTIFIER.test(value.trim()) ? null : IDENTIFIER_HINT
+                  }
+                />
+              </div>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-sm">Columns</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    startContent={<Plus />}
+                    isDisabled={busy}
+                    onPress={() =>
+                      setColumns((items) => [
+                        ...items,
+                        {
+                          key: Date.now(),
+                          name: "",
+                          type: "string",
+                          required: false,
+                        },
+                      ])
+                    }
+                  >
+                    Add column
+                  </Button>
+                </div>
+                {columns.map((column, index) => (
+                  <div
+                    key={column.key}
+                    className="flex flex-wrap items-start gap-2"
+                  >
+                    <TextField
+                      aria-label={`Column ${index + 1} name`}
+                      className="min-w-40 flex-1"
+                      placeholder="Column name"
+                      isRequired
+                      isDisabled={busy}
+                      value={column.name}
+                      onChange={(value) => update(column.key, { name: value })}
+                      validate={(value) =>
+                        !IDENTIFIER.test(value.trim())
+                          ? IDENTIFIER_HINT
+                          : columns.filter(
+                                (item) => item.name.trim() === value.trim(),
+                              ).length > 1
+                            ? "Column names must be unique."
+                            : null
+                      }
+                    />
+                    <Select
+                      aria-label={`Column ${index + 1} type`}
+                      className="w-36"
+                      isDisabled={busy}
+                      selectedKey={column.type}
+                      onSelectionChange={(key) =>
+                        update(column.key, { type: String(key) })
+                      }
+                    >
+                      {COLUMN_TYPES.map((type) => (
+                        <SelectItem key={type} id={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
+                    </Select>
+                    <Checkbox
+                      className="h-10"
+                      isDisabled={busy}
+                      isSelected={column.required}
+                      onChange={(value) =>
+                        update(column.key, { required: value })
+                      }
+                    >
+                      Required
+                    </Checkbox>
+                    <IconButton
+                      aria-label={`Remove column ${index + 1}`}
+                      isDisabled={busy || columns.length === 1}
+                      onPress={() =>
+                        setColumns((items) =>
+                          items.filter((item) => item.key !== column.key),
+                        )
+                      }
+                    >
+                      <Trash2 />
+                    </IconButton>
+                  </div>
+                ))}
+              </div>
+            </DialogBody>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                isDisabled={busy}
+                onPress={() => setOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" color="primary" isLoading={busy}>
                 Create table
               </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+            </DialogFooter>
+          </Form>
+        </Dialog>
+      </Modal>
     </>
   );
 }

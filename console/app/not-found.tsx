@@ -1,25 +1,24 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { buttonVariants } from "@heroui/styles";
+"use client";
+import { EmptyState, Link, PageContent, buttonStyles } from "@nowquant/nqui";
+import { ArrowLeft, Compass } from "lucide-react";
 export default function NotFound() {
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center">
-      <p className="mb-3 font-mono text-xs text-primary">404</p>
-      <h1 className="text-2xl font-semibold">Page not found</h1>
-      <p className="mb-6 mt-3 text-sm text-muted-foreground">
-        This page may have moved. Return to your workspace to continue.
-      </p>
-
-      <Link
-        href="/"
-        className={buttonVariants({
-          variant: "primary",
-          className: "gap-2 text-xs",
-        })}
-      >
-        <ArrowLeft className="size-4" />
-        Back to overview
-      </Link>
-    </div>
+    <PageContent>
+      <EmptyState
+        size="lg"
+        icon={<Compass />}
+        title="Page not found"
+        description="This page may have moved. Return to your workspace to continue."
+        actions={
+          <Link
+            href="/"
+            className={buttonStyles({ variant: "solid", color: "primary" })}
+          >
+            <ArrowLeft />
+            Back to overview
+          </Link>
+        }
+      />
+    </PageContent>
   );
 }

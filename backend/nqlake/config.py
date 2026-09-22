@@ -24,6 +24,8 @@ class Settings:
     bucket: str
     api_port: int
     duckdb_extension_dir: Path
+    # Unix socket the backend binds to send an Arrow IPC stream (POST /query/arrow).
+    arrow_socket_path: Path
     # MinIO user of the stack; empty when .env does not set it.
     s3_access_key: str
     s3_secret_key: str
@@ -71,6 +73,7 @@ def load_settings(dotenv: Path = ROOT / ".env") -> Settings:
         bucket=get("LAKEHOUSE_BUCKET", "lakehouse"),
         api_port=int(get("API_PORT", "40004")),
         duckdb_extension_dir=Path(get("DUCKDB_EXTENSION_DIR", str(ROOT / "images/duckdb/extensions"))),
+        arrow_socket_path=Path(get("ARROW_SOCKET_PATH", str(ROOT / "images/api/state/arrow.sock"))),
         s3_access_key=get("LAKEHOUSE_S3_ACCESS_KEY", ""),
         s3_secret_key=get("LAKEHOUSE_S3_SECRET_KEY", ""),
     )

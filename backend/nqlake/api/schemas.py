@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from nqlake.lake.stream import DEFAULT_BATCH_ROWS
 
 # Output models read the lake layer's dataclasses field by field.
 _FROM_ATTRIBUTES = ConfigDict(from_attributes=True)
@@ -103,6 +106,21 @@ class WriteOut(BaseModel):
 class QueryIn(BaseModel):
     sql: str = Field(examples=["SELECT count(*) FROM lake.raw.nq_futures_mbo"])
     limit: int = Field(default=100, ge=1, le=10_000)
+
+
+class QueryStreamIn(BaseModel):
+    sql: str = Field(examples=["SELECT * FROM lake.raw.nq_futures_mbo"])
+    # Rows per record batch of the stream. The result itself has no limit.
+    batch_size: int = Field(default=DEFAULT_BATCH_ROWS, ge=1, le=1_000_000)
+    # Absolute path of the Unix socket to bind; ARROW_SOCKET_PATH of .env when omitted.
+    socket_path: str | None = Field(default=None, examples=["/tmp/nqlake-arrow.sock"])
+
+
+class ArrowStreamOut(BaseModel):
+    model_config = _FROM_ATTRIBUTES
+    # The bound socket; connect and read an Arrow IPC stream from it.
+    socket_path: Path
+    batch_size: int
 
 
 class RepairOut(BaseModel):

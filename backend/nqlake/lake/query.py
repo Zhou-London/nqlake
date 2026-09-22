@@ -97,6 +97,23 @@ class Engine:
                 self._con = None
 
 
+def bind(cur: duckdb.DuckDBPyConnection, sql: str) -> duckdb.DuckDBPyRelation:
+    """Binds one SQL statement on the cursor without running it.
+
+    Raises InvalidRequest for SQL DuckDB rejects (a syntax error, a missing
+    table), or for a statement that returns no rows (DDL, SET, ...).
+    """
+    try:
+        relation = cur.sql(sql)
+    except duckdb.HTTPException:
+        raise
+    except duckdb.Error as exc:
+        raise InvalidRequest(str(exc)) from exc
+    if relation is None:
+        raise InvalidRequest("The statement returns no rows. Send a query such as SELECT.")
+    return relation
+
+
 def run_query(engine: Engine, sql: str, limit: int) -> pa.Table:
     """Runs one read-only SQL statement and returns at most ``limit`` rows as Arrow.
 
@@ -105,11 +122,23 @@ def run_query(engine: Engine, sql: str, limit: int) -> pa.Table:
     """
     with engine.cursor() as cur:
         try:
-            relation = cur.sql(sql)
-            if relation is None:
-                raise InvalidRequest("The statement returns no rows. Send a query such as SELECT.")
-            return relation.limit(limit).to_arrow_table()
+            return bind(cur, sql).limit(limit).to_arrow_table()
         except duckdb.HTTPException:
             raise
         except duckdb.Error as exc:
             raise InvalidRequest(str(exc)) from exc
+
+
+def arrow_reader(cur: duckdb.DuckDBPyConnection, sql: str, batch_size: int) -> pa.RecordBatchReader:
+    """Starts one read-only SQL statement and returns its rows as a reader of ``batch_size``-row record batches.
+
+    The result is never held whole: DuckDB produces each batch when the
+    reader asks for it. The cursor must stay open until the reader is done.
+    Raises InvalidRequest for SQL DuckDB rejects.
+    """
+    try:
+        return bind(cur, sql).to_arrow_reader(batch_size)
+    except duckdb.HTTPException:
+        raise
+    except duckdb.Error as exc:
+        raise InvalidRequest(str(exc)) from exc

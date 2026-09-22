@@ -67,12 +67,46 @@ format version 2, the newest version PyIceberg 0.12 writes.
 | POST | `/namespaces/{ns}/tables/{table}/parquet` | Uploads a Parquet file: `mode=append|overwrite`, `create=true` makes the table from the file's schema |
 | POST | `/parquet/inspect` | Reports the Iceberg type of each column and the repairs an upload would apply, without writing |
 | POST | `/query` | Runs read-only SQL with DuckDB; tables are `lake.<namespace>.<table>` |
+| POST | `/query/arrow` | Binds a Unix socket and sends every row of a read-only SQL result to it as an Arrow IPC stream |
 
 `/query` runs on one DuckDB database per process, opened on the first query
 and attached read-only to the catalog; each request gets its own cursor.
 Rows appended or deleted through the API are visible to the next query. A
 change to a table's columns shows up in `/query` about one second later;
 `GET .../tables/{table}` shows it at once.
+
+`/query/arrow` moves a whole result, however large, out of band. The HTTP
+call is only the trigger: the backend binds a Unix domain socket, answers
+202 with its path, and a thread waits for one receiver to connect. The
+receiver then reads one Arrow IPC stream from the socket: the schema, one
+record batch of `batch_size` rows at a time (default 65536, at most
+1000000), and the end-of-stream marker. DuckDB produces each batch when the
+writer asks for it, so neither side holds the result whole. The socket is
+`ARROW_SOCKET_PATH` from `.env` (default `images/api/state/arrow.sock`)
+unless the body sets `socket_path`; one transfer runs per path at a time,
+and the file is removed when the transfer ends. A rejected statement
+answers 422 before the socket is bound; a receiver that does not connect
+within 60 seconds abandons the transfer; a DuckDB error after the stream
+began ends it with a truncated message, so the reader raises instead of
+returning the rows so far as a complete result.
+
+```python
+import socket
+
+import pyarrow as pa
+import requests
+
+transfer = requests.post(
+    "http://localhost:40004/query/arrow",
+    json={"sql": "SELECT * FROM lake.raw.trades", "batch_size": 65536},
+)
+transfer.raise_for_status()
+with socket.socket(socket.AF_UNIX) as sock:
+    sock.connect(transfer.json()["socket_path"])
+    with pa.ipc.open_stream(sock.makefile("rb")) as reader:
+        for batch in reader:
+            process(batch)
+```
 
 Errors share one shape, `{"error": "...", "problems": [...]}`, with one
 problem per column when a schema is rejected.

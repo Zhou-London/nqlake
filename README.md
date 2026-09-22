@@ -9,7 +9,8 @@
   <img alt="Console: Next.js" src="https://img.shields.io/badge/console-Next.js-000000?logo=nextdotjs&logoColor=white" />
 </p>
 
-Release notes: [0.4.0](docs/release-notes/0.4.0.md), the console on NQUI,
+Release notes: [0.5.0](docs/release-notes/0.5.0.md), Arrow streams over a Unix
+socket, [0.4.0](docs/release-notes/0.4.0.md), the console on NQUI,
 [0.3.0](docs/release-notes/0.3.0.md), the console's HeroUI migration, [0.2.0](docs/release-notes/0.2.0.md), the console, and
 [0.1.0](docs/release-notes/0.1.0.md), the backend API.
 

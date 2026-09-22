@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="374" viewBox="0 0 720 374" role="img" aria-label="Where a full-table transfer spends its time, by batch size: about 2.6 seconds of DuckDB producing batches followed by about 2.7 seconds of socket sends, in one thread, for a total near 5.3 seconds at every batch size from 4,096 rows up; 1,024-row batches take 6.2 seconds">
+<title>Where a transfer spends its time</title>
+<rect width="720" height="374" fill="#fcfcfb"/>
+<text x="24" y="32" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="15" fill="#0b0b0b" text-anchor="start" font-weight="600">Where a transfer spends its time</text>
+<text x="24" y="52" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="start">Full table, seconds in the sending thread. The two parts run one after the other. Lower is better.</text>
+<rect x="24" y="69" width="12" height="12" rx="2" fill="#eb6834"/><text x="42" y="79" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="start">DuckDB produces the batch</text>
+<rect x="234" y="69" width="12" height="12" rx="2" fill="#1baf7a"/><text x="252" y="79" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="start">The socket sends it</text>
+<line x1="88.0" y1="98" x2="88.0" y2="325.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="88.0" y="341.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle" font-variant-numeric="tabular-nums">0</text>
+<line x1="172.6" y1="98" x2="172.6" y2="325.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="172.6" y="341.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle" font-variant-numeric="tabular-nums">1</text>
+<line x1="257.1" y1="98" x2="257.1" y2="325.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="257.1" y="341.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle" font-variant-numeric="tabular-nums">2</text>
+<line x1="341.7" y1="98" x2="341.7" y2="325.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="341.7" y="341.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle" font-variant-numeric="tabular-nums">3</text>
+<line x1="426.3" y1="98" x2="426.3" y2="325.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="426.3" y="341.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle" font-variant-numeric="tabular-nums">4</text>
+<line x1="510.9" y1="98" x2="510.9" y2="325.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="510.9" y="341.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle" font-variant-numeric="tabular-nums">5</text>
+<line x1="595.4" y1="98" x2="595.4" y2="325.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="595.4" y="341.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle" font-variant-numeric="tabular-nums">6</text>
+<line x1="680.0" y1="98" x2="680.0" y2="325.0" stroke="#e1e0d9" stroke-width="1"/>
+<text x="680.0" y="341.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="middle" font-variant-numeric="tabular-nums">7</text>
+<text x="680" y="357.0" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="11" fill="#898781" text-anchor="end">seconds</text>
+<line x1="88" y1="98" x2="88" y2="325.0" stroke="#c3c2b7" stroke-width="1"/>
+<text x="76" y="119" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">1K</text>
+<rect x="88.0" y="108" width="251.7" height="14" fill="#eb6834"/>
+<path d="M341.7 108 H610.9 a4 4 0 0 1 4 4 V118 a4 4 0 0 1 -4 4 H341.7 Z" fill="#1baf7a"/>
+<text x="622.9" y="119" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">6.2 s</text>
+<text x="76" y="139" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">2K</text>
+<rect x="88.0" y="128" width="231.4" height="14" fill="#eb6834"/>
+<path d="M321.4 128 H548.3 a4 4 0 0 1 4 4 V138 a4 4 0 0 1 -4 4 H321.4 Z" fill="#1baf7a"/>
+<text x="560.3" y="139" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">5.5 s</text>
+<text x="76" y="159" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">4K</text>
+<rect x="88.0" y="148" width="219.6" height="14" fill="#eb6834"/>
+<path d="M309.6 148 H529.7 a4 4 0 0 1 4 4 V158 a4 4 0 0 1 -4 4 H309.6 Z" fill="#1baf7a"/>
+<text x="541.7" y="159" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">5.3 s</text>
+<text x="76" y="179" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">8K</text>
+<rect x="88.0" y="168" width="217.0" height="14" fill="#eb6834"/>
+<path d="M307.0 168 H525.5 a4 4 0 0 1 4 4 V178 a4 4 0 0 1 -4 4 H307.0 Z" fill="#1baf7a"/>
+<text x="537.5" y="179" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">5.2 s</text>
+<text x="76" y="199" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">16K</text>
+<rect x="88.0" y="188" width="217.9" height="14" fill="#eb6834"/>
+<path d="M307.9 188 H528.0 a4 4 0 0 1 4 4 V198 a4 4 0 0 1 -4 4 H307.9 Z" fill="#1baf7a"/>
+<text x="540.0" y="199" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">5.2 s</text>
+<text x="76" y="219" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">32K</text>
+<rect x="88.0" y="208" width="216.2" height="14" fill="#eb6834"/>
+<path d="M306.2 208 H522.9 a4 4 0 0 1 4 4 V218 a4 4 0 0 1 -4 4 H306.2 Z" fill="#1baf7a"/>
+<text x="534.9" y="219" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">5.2 s</text>
+<text x="76" y="239" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">64K</text>
+<rect x="88.0" y="228" width="222.1" height="14" fill="#eb6834"/>
+<path d="M312.1 228 H532.2 a4 4 0 0 1 4 4 V238 a4 4 0 0 1 -4 4 H312.1 Z" fill="#1baf7a"/>
+<text x="544.2" y="239" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">5.3 s</text>
+<text x="76" y="259" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">128K</text>
+<rect x="88.0" y="248" width="221.3" height="14" fill="#eb6834"/>
+<path d="M311.3 248 H530.5 a4 4 0 0 1 4 4 V258 a4 4 0 0 1 -4 4 H311.3 Z" fill="#1baf7a"/>
+<text x="542.5" y="259" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">5.3 s</text>
+<text x="76" y="279" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">256K</text>
+<rect x="88.0" y="268" width="224.7" height="14" fill="#eb6834"/>
+<path d="M314.7 268 H536.5 a4 4 0 0 1 4 4 V278 a4 4 0 0 1 -4 4 H314.7 Z" fill="#1baf7a"/>
+<text x="548.5" y="279" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">5.3 s</text>
+<text x="76" y="299" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">512K</text>
+<rect x="88.0" y="288" width="220.4" height="14" fill="#eb6834"/>
+<path d="M310.4 288 H533.1 a4 4 0 0 1 4 4 V298 a4 4 0 0 1 -4 4 H310.4 Z" fill="#1baf7a"/>
+<text x="545.1" y="299" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">5.3 s</text>
+<text x="76" y="319" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#52514e" text-anchor="end" font-variant-numeric="tabular-nums">1M</text>
+<rect x="88.0" y="308" width="222.1" height="14" fill="#eb6834"/>
+<path d="M312.1 308 H536.5 a4 4 0 0 1 4 4 V318 a4 4 0 0 1 -4 4 H312.1 Z" fill="#1baf7a"/>
+<text x="548.5" y="319" font-family="system-ui, -apple-system, Segoe UI, sans-serif" font-size="12" fill="#0b0b0b" text-anchor="start" font-variant-numeric="tabular-nums">5.3 s</text>
+</svg>

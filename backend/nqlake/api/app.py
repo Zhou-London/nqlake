@@ -24,7 +24,7 @@ one sentence per column when a schema is rejected.
 def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="NQ Lake",
-        version="0.1.0",
+        version="0.5.0",
         description=DESCRIPTION,
         responses={422: {"model": ErrorOut}, 503: {"model": ErrorOut}},
     )

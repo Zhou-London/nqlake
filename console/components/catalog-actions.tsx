@@ -10,6 +10,7 @@ import {
   DialogHeader,
   Form,
   IconButton,
+  Label,
   Modal,
   Select,
   SelectItem,
@@ -240,7 +241,7 @@ export function NewTableButton({ namespace }: { namespace?: string }) {
               </div>
               <div className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-sm">Columns</span>
+                  <Label>Columns</Label>
                   <Button
                     variant="ghost"
                     size="sm"

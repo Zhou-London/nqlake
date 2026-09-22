@@ -12,7 +12,6 @@ import {
 } from "@nowquant/nqui";
 import { Table2 } from "lucide-react";
 import { type LakeTable, tableHref } from "@/lib/api";
-import { date, number } from "@/lib/utils";
 
 export function TableList({
   tables,
@@ -63,9 +62,8 @@ export function TableList({
       {
         accessorKey: "row_count",
         header: "Rows",
-        numeric: true,
+        format: "integer",
         filter: "number",
-        cell: ({ value }) => number(value as number | null),
       },
       {
         accessorKey: "format_version",
@@ -76,9 +74,15 @@ export function TableList({
       {
         accessorKey: "snapshot_at",
         header: "Last updated",
+        format: "datetime",
+        dateOptions: {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        },
         filter: false,
         sortDescFirst: true,
-        cell: ({ value }) => date(value as string | null),
       },
     ],
     [],

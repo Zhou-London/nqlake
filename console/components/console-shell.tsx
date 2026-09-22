@@ -7,6 +7,7 @@ import {
   Breadcrumb,
   Breadcrumbs,
   Button,
+  CardIcon,
   CardRow,
   CardStack,
   Chip,
@@ -110,11 +111,11 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
               <Link
                 href="/"
                 variant="foreground"
-                className="gap-3 font-semibold text-base"
+                className="gap-2 font-semibold"
               >
-                <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <Layers className="size-4!" />
-                </span>
+                <CardIcon size="sm" color="primary">
+                  <Layers />
+                </CardIcon>
                 NQ Lake
               </Link>
             </SidebarHeader>
@@ -148,15 +149,9 @@ export function ConsoleShell({ children }: { children: React.ReactNode }) {
                 description="Local workspace"
                 showChevron={false}
               />
-              <Button
-                variant="ghost"
-                fullWidth
-                className="justify-start"
-                startContent={<BookOpen />}
-                onPress={() => setHelp(true)}
-              >
+              <SidebarItem icon={<BookOpen />} onPress={() => setHelp(true)}>
                 User guide
-              </Button>
+              </SidebarItem>
             </SidebarFooter>
           </Sidebar>
         }

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   Button,
   DataGrid,
@@ -9,36 +9,39 @@ import {
 import { Download, TerminalSquare } from "lucide-react";
 import type { Rows } from "@/lib/api";
 import { number } from "@/lib/utils";
-import { displayCell, toCsv } from "@/lib/data.mjs";
+import { toCsv } from "@/lib/data.mjs";
 
 type Row = Record<string, unknown>;
+const NO_ROWS: Row[] = [];
 
 export function RowsGrid({
   data,
+  isLoading,
   filename = "query-results",
+  emptyState,
 }: {
-  data: Rows;
+  /** Rows to show. `null` shows the grid's loading rows until the first result arrives. */
+  data: Rows | null;
+  isLoading?: boolean;
   filename?: string;
+  emptyState?: ReactNode;
 }) {
+  const names = data?.columns;
   const columns = useMemo<DataGridColumn<Row>[]>(
     () =>
-      data.columns.map((name) => ({
+      (names ?? []).map((name) => ({
         id: name,
         accessorFn: (row) => row[name],
         header: name,
         size: 180,
-        cell: ({ value }) => (
-          <span className={value == null ? "text-subtle" : undefined}>
-            {displayCell(value)}
-          </span>
-        ),
       })),
-    [data.columns],
+    [names],
   );
   function download() {
+    if (!data) return;
     const csv = toCsv(data.columns, data.rows);
     const url = URL.createObjectURL(
-      new Blob(["﻿", csv], { type: "text/csv;charset=utf-8;" }),
+      new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8;" }),
     );
     const a = document.createElement("a");
     a.href = url;
@@ -53,17 +56,21 @@ export function RowsGrid({
       density="compact"
       enableResizing
       columns={columns}
-      data={data.rows}
+      data={data?.rows ?? NO_ROWS}
       getRowId={(_, index) => String(index)}
+      isLoading={isLoading}
+      loadingRows={5}
       pagination={{ pageSize: 25, pageSizeOptions: [25, 50, 100] }}
       toolbar={{
-        title: `${number(data.row_count)} rows · ${data.columns.length} columns`,
+        title: data
+          ? `${number(data.row_count)} rows · ${data.columns.length} columns`
+          : undefined,
         end: (
           <Button
             variant="ghost"
             size="sm"
             startContent={<Download />}
-            isDisabled={!data.columns.length}
+            isDisabled={!data?.columns.length}
             onPress={download}
           >
             Export CSV
@@ -71,12 +78,14 @@ export function RowsGrid({
         ),
       }}
       emptyState={
-        <EmptyState
-          size="sm"
-          icon={<TerminalSquare />}
-          title="No matching rows"
-          description="The query completed without returning any rows."
-        />
+        emptyState ?? (
+          <EmptyState
+            size="sm"
+            icon={<TerminalSquare />}
+            title="No matching rows"
+            description="The query completed without returning any rows."
+          />
+        )
       }
     />
   );

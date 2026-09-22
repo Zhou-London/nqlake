@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   Card,
+  CardBody,
   CardHeader,
   CardTitle,
   Cell,
@@ -18,7 +19,6 @@ import {
   SearchField,
   Select,
   SelectItem,
-  Spinner,
   StatusDot,
   Table,
   TableBody,
@@ -103,7 +103,6 @@ export default function Query() {
     }
     setRunning(true);
     setError("");
-    setResult(null);
     setElapsed(null);
     const start = performance.now();
     const abort = new AbortController();
@@ -174,9 +173,9 @@ export default function Query() {
         }
       />
       <PageContent>
-        <div className="grid items-start gap-6 xl:grid-cols-[260px_1fr]">
+        <div className="grid items-start gap-6 xl:grid-cols-[280px_1fr]">
           <Card className="xl:sticky xl:top-0">
-            <div className="flex flex-col gap-2 p-2">
+            <CardBody className="flex flex-col gap-2">
               <SearchField
                 aria-label="Search available tables"
                 size="sm"
@@ -204,7 +203,7 @@ export default function Query() {
                   description="Connect to the data service to choose a table here."
                 />
               )}
-            </div>
+            </CardBody>
           </Card>
           <div className="flex min-w-0 flex-col gap-6">
             <SqlEditor
@@ -259,16 +258,8 @@ export default function Query() {
                   </Chip>
                 )}
               </CardHeader>
-              {running ? (
-                <div
-                  role="status"
-                  className="flex min-h-52 flex-col items-center justify-center gap-3 text-muted text-sm"
-                >
-                  <Spinner size="lg" color="primary" label="Running query" />
-                  Running query…
-                </div>
-              ) : result ? (
-                <RowsGrid data={result} />
+              {running || result ? (
+                <RowsGrid data={result} isLoading={running} />
               ) : (
                 <EmptyState
                   icon={<TerminalSquare />}

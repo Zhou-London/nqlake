@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardBody,
+  CardFooter,
   CardHeader,
   CardTitle,
   Cell,
@@ -12,6 +13,7 @@ import {
   Chip,
   Code,
   Column,
+  Divider,
   EmptyState,
   FileUpload,
   Form,
@@ -220,19 +222,19 @@ export default function Imports() {
                     onReject={() => setError("Select a .parquet file.")}
                     onRemove={() => choose(undefined)}
                   />
-                  <div>
-                    <Button
-                      variant="outline"
-                      startContent={<FileCheck2 />}
-                      isLoading={busy}
-                      disabledReason={file ? undefined : "Choose a file first"}
-                      isDisabled={submitting}
-                      onPress={inspect}
-                    >
-                      Inspect file
-                    </Button>
-                  </div>
                 </CardBody>
+                <CardFooter>
+                  <Button
+                    variant="outline"
+                    startContent={<FileCheck2 />}
+                    isLoading={busy}
+                    disabledReason={file ? undefined : "Choose a file first"}
+                    isDisabled={submitting}
+                    onPress={inspect}
+                  >
+                    Inspect file
+                  </Button>
+                </CardFooter>
               </Card>
               {inspection && (
                 <Card>
@@ -265,7 +267,8 @@ export default function Imports() {
                       </TableBody>
                     </Table>
                   </TableContainer>
-                  <CardBody className="flex flex-col gap-3 border-border border-t pt-4">
+                  <Divider />
+                  <CardBody className="flex flex-col gap-3">
                     {inspection.repairs.length ? (
                       inspection.repairs.map((r, i) => (
                         <Alert

@@ -17,6 +17,8 @@ import {
   DialogBody,
   DialogFooter,
   DialogHeader,
+  Divider,
+  EmptyState,
   Form,
   JsonViewer,
   KpiCard,
@@ -27,7 +29,6 @@ import {
   Row,
   Select,
   SelectItem,
-  Skeleton,
   Tab,
   TabList,
   TabPanel,
@@ -146,6 +147,7 @@ export function TableDetail({
   const [deleteFilter, setDeleteFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
+  const pending = loading && !table;
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -184,7 +186,6 @@ export function TableDetail({
   async function loadRows() {
     setRowsLoading(true);
     setRowsError("");
-    setRows(null);
     try {
       const query = new URLSearchParams({ limit });
       if (filter.trim()) query.set("filter", filter.trim());
@@ -285,229 +286,224 @@ export function TableDetail({
             }
           />
         )}
-        {loading && !table ? (
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => (
-              <Skeleton key={i} className="h-24" />
-            ))}
-          </div>
-        ) : (
-          table && (
-            <>
-              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <KpiCard
-                  size="sm"
-                  label="Total rows"
-                  value={number(table.row_count)}
-                />
-                <KpiCard
-                  size="sm"
-                  label="Columns"
-                  value={table.columns.length}
-                />
-                <KpiCard
-                  size="sm"
-                  label="Snapshots"
-                  value={table.snapshot_count}
-                />
-                <KpiCard
-                  size="sm"
-                  label="Table format"
-                  value={`Iceberg v${table.format_version}`}
-                />
-              </div>
-              <Tabs defaultSelectedKey="data">
-                <TabList aria-label="Table details">
-                  <Tab id="data">Data preview</Tab>
-                  <Tab id="schema">Schema</Tab>
-                  <Tab id="metadata">Metadata</Tab>
-                  <Tab id="manage">Manage</Tab>
-                </TabList>
-                <TabPanel id="data">
-                  <Card>
-                    <Form
-                      className="flex flex-wrap items-end gap-2 border-border border-b p-4"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void loadRows();
-                      }}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <KpiCard
+            size="sm"
+            label="Total rows"
+            value={table ? number(table.row_count) : "—"}
+            isLoading={pending}
+          />
+          <KpiCard
+            size="sm"
+            label="Columns"
+            value={table?.columns.length ?? "—"}
+            isLoading={pending}
+          />
+          <KpiCard
+            size="sm"
+            label="Snapshots"
+            value={table?.snapshot_count ?? "—"}
+            isLoading={pending}
+          />
+          <KpiCard
+            size="sm"
+            label="Table format"
+            value={table ? `Iceberg v${table.format_version}` : "—"}
+            isLoading={pending}
+          />
+        </div>
+        {table && (
+          <Tabs defaultSelectedKey="data">
+            <TabList aria-label="Table details">
+              <Tab id="data">Data preview</Tab>
+              <Tab id="schema">Schema</Tab>
+              <Tab id="metadata">Metadata</Tab>
+              <Tab id="manage">Manage</Tab>
+            </TabList>
+            <TabPanel id="data">
+              <Card>
+                <CardHeader>
+                  <Form
+                    className="flex flex-1 flex-row flex-wrap items-center gap-2"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void loadRows();
+                    }}
+                  >
+                    <TextField
+                      aria-label="Iceberg row filter"
+                      className="min-w-56 flex-1 font-mono"
+                      size="sm"
+                      startContent={<Filter />}
+                      placeholder="Filter, e.g. price > 10 AND side = 'A'"
+                      value={filter}
+                      onChange={setFilter}
+                    />
+                    <Select
+                      aria-label="Preview limit"
+                      size="sm"
+                      className="w-32"
+                      selectedKey={limit}
+                      onSelectionChange={(key) => setLimit(String(key))}
                     >
-                      <TextField
-                        aria-label="Iceberg row filter"
-                        className="min-w-56 flex-1 font-mono"
+                      {[100, 500, 1000].map((n) => (
+                        <SelectItem key={n} id={String(n)}>
+                          {`${n} rows`}
+                        </SelectItem>
+                      ))}
+                    </Select>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="outline"
+                      isLoading={rowsLoading}
+                    >
+                      Apply filter
+                    </Button>
+                  </Form>
+                </CardHeader>
+                {rowsError && (
+                  <CardBody>
+                    <Alert
+                      color="error"
+                      title={rowsError}
+                      actions={
+                        <Button size="sm" variant="outline" onPress={loadRows}>
+                          Retry
+                        </Button>
+                      }
+                    />
+                  </CardBody>
+                )}
+                <RowsGrid
+                  data={rows}
+                  isLoading={rowsLoading}
+                  filename={full}
+                  emptyState={
+                    rowsError ? (
+                      <EmptyState
                         size="sm"
-                        startContent={<Filter />}
-                        placeholder="Filter, e.g. price > 10 AND side = 'A'"
-                        value={filter}
-                        onChange={setFilter}
+                        title="No rows to show"
+                        description="Adjust the filter and apply it again."
                       />
-                      <Select
-                        aria-label="Preview limit"
-                        size="sm"
-                        className="w-32"
-                        selectedKey={limit}
-                        onSelectionChange={(key) => setLimit(String(key))}
-                      >
-                        {[100, 500, 1000].map((n) => (
-                          <SelectItem key={n} id={String(n)}>
-                            {`${n} rows`}
-                          </SelectItem>
-                        ))}
-                      </Select>
+                    ) : undefined
+                  }
+                />
+              </Card>
+            </TabPanel>
+            <TabPanel id="schema">
+              <Card>
+                <CardHeader className="items-center">
+                  <CardTitle>Columns</CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    startContent={<Plus />}
+                    onPress={() => open("column")}
+                  >
+                    Add column
+                  </Button>
+                </CardHeader>
+                <TableContainer bare>
+                  <Table aria-label="Table columns">
+                    <TableHeader>
+                      <Column>ID</Column>
+                      <Column isRowHeader>Column name</Column>
+                      <Column>Type</Column>
+                      <Column>Nullable</Column>
+                      <Column>Description</Column>
+                    </TableHeader>
+                    <TableBody>
+                      {table.columns.map((c) => (
+                        <Row key={c.id} id={c.id}>
+                          <Cell className="text-muted" numeric>
+                            {c.id}
+                          </Cell>
+                          <Cell>
+                            <Code>{c.name}</Code>
+                          </Cell>
+                          <Cell>
+                            <Code color="primary">{c.type}</Code>
+                          </Cell>
+                          <Cell>{c.required ? "No" : "Yes"}</Cell>
+                          <Cell className="text-muted">{c.doc || "—"}</Cell>
+                        </Row>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Card>
+            </TabPanel>
+            <TabPanel id="metadata">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Table metadata</CardTitle>
+                </CardHeader>
+                <TableContainer bare>
+                  <Table aria-label="Table metadata">
+                    <TableHeader>
+                      <Column isRowHeader>Property</Column>
+                      <Column>Value</Column>
+                    </TableHeader>
+                    <TableBody>
+                      {[
+                        { key: "Namespace", value: namespace },
+                        { key: "Storage location", value: table.location },
+                        {
+                          key: "Current snapshot ID",
+                          value: String(table.snapshot_id ?? "No snapshots"),
+                        },
+                        {
+                          key: "Snapshot time",
+                          value: date(table.snapshot_at),
+                        },
+                        {
+                          key: "Partitioning",
+                          value:
+                            table.partition_by.join(", ") || "Unpartitioned",
+                        },
+                      ].map((item) => (
+                        <Row key={item.key} id={item.key}>
+                          <Cell className="text-muted">{item.key}</Cell>
+                          <Cell className="whitespace-normal break-all">
+                            <Code>{item.value}</Code>
+                          </Cell>
+                        </Row>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <Divider />
+                <CardHeader>
+                  <CardTitle>Table properties</CardTitle>
+                </CardHeader>
+                <CardBody>
+                  <JsonViewer value={table.properties} copyable />
+                </CardBody>
+              </Card>
+            </TabPanel>
+            <TabPanel id="manage">
+              <CardStack>
+                {actions.map((item) => (
+                  <CardRow
+                    key={item.kind}
+                    title={item.title}
+                    description={item.description}
+                    showChevron={false}
+                    endContent={
                       <Button
-                        type="submit"
-                        size="sm"
                         variant="outline"
-                        isLoading={rowsLoading}
+                        color={item.danger ? "error" : "accent"}
+                        onPress={() => open(item.kind)}
                       >
-                        Apply filter
+                        {item.action}
                       </Button>
-                    </Form>
-                    {rowsError && (
-                      <CardBody>
-                        <Alert
-                          color="error"
-                          title={rowsError}
-                          actions={
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onPress={loadRows}
-                            >
-                              Retry
-                            </Button>
-                          }
-                        />
-                      </CardBody>
-                    )}
-                    {rowsLoading ? (
-                      <CardBody className="flex flex-col gap-3">
-                        {[1, 2, 3, 4].map((i) => (
-                          <Skeleton key={i} className="h-8" />
-                        ))}
-                      </CardBody>
-                    ) : (
-                      rows && <RowsGrid data={rows} filename={full} />
-                    )}
-                  </Card>
-                </TabPanel>
-                <TabPanel id="schema">
-                  <Card>
-                    <CardHeader className="items-center">
-                      <CardTitle>Columns</CardTitle>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        startContent={<Plus />}
-                        onPress={() => open("column")}
-                      >
-                        Add column
-                      </Button>
-                    </CardHeader>
-                    <TableContainer bare>
-                      <Table aria-label="Table columns">
-                        <TableHeader>
-                          <Column>ID</Column>
-                          <Column isRowHeader>Column name</Column>
-                          <Column>Type</Column>
-                          <Column>Nullable</Column>
-                          <Column>Description</Column>
-                        </TableHeader>
-                        <TableBody>
-                          {table.columns.map((c) => (
-                            <Row key={c.id} id={c.id}>
-                              <Cell className="text-muted" numeric>
-                                {c.id}
-                              </Cell>
-                              <Cell>
-                                <Code>{c.name}</Code>
-                              </Cell>
-                              <Cell>
-                                <Code color="primary">{c.type}</Code>
-                              </Cell>
-                              <Cell>{c.required ? "No" : "Yes"}</Cell>
-                              <Cell className="text-muted">{c.doc || "—"}</Cell>
-                            </Row>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  </Card>
-                </TabPanel>
-                <TabPanel id="metadata">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Table metadata</CardTitle>
-                    </CardHeader>
-                    <TableContainer bare>
-                      <Table aria-label="Table metadata">
-                        <TableHeader>
-                          <Column isRowHeader>Property</Column>
-                          <Column>Value</Column>
-                        </TableHeader>
-                        <TableBody>
-                          {[
-                            { key: "Namespace", value: namespace },
-                            { key: "Storage location", value: table.location },
-                            {
-                              key: "Current snapshot ID",
-                              value: String(
-                                table.snapshot_id ?? "No snapshots",
-                              ),
-                            },
-                            {
-                              key: "Snapshot time",
-                              value: date(table.snapshot_at),
-                            },
-                            {
-                              key: "Partitioning",
-                              value:
-                                table.partition_by.join(", ") ||
-                                "Unpartitioned",
-                            },
-                          ].map((item) => (
-                            <Row key={item.key} id={item.key}>
-                              <Cell className="text-muted">{item.key}</Cell>
-                              <Cell className="whitespace-normal break-all">
-                                <Code>{item.value}</Code>
-                              </Cell>
-                            </Row>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                    <CardBody className="flex flex-col gap-3 border-border border-t pt-4">
-                      <span className="font-medium text-sm">
-                        Table properties
-                      </span>
-                      <JsonViewer value={table.properties} copyable />
-                    </CardBody>
-                  </Card>
-                </TabPanel>
-                <TabPanel id="manage">
-                  <CardStack>
-                    {actions.map((item) => (
-                      <CardRow
-                        key={item.kind}
-                        title={item.title}
-                        description={item.description}
-                        showChevron={false}
-                        endContent={
-                          <Button
-                            variant="outline"
-                            color={item.danger ? "error" : "accent"}
-                            onPress={() => open(item.kind)}
-                          >
-                            {item.action}
-                          </Button>
-                        }
-                      />
-                    ))}
-                  </CardStack>
-                </TabPanel>
-              </Tabs>
-            </>
-          )
+                    }
+                  />
+                ))}
+              </CardStack>
+            </TabPanel>
+          </Tabs>
         )}
       </PageContent>
       <Modal

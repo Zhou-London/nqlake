@@ -43,6 +43,21 @@ export type Inspection = {
   columns: { name: string; parquet_type: string; iceberg_type: string }[];
   repairs: Repair[];
 };
+export type ArrowState =
+  "waiting" | "running" | "done" | "failed" | "abandoned" | "closed";
+export type ArrowTransfer = {
+  id: number;
+  host: string;
+  port: number;
+  batch_size: number;
+  sql: string;
+  state: ArrowState;
+  started: string;
+  ended: string | null;
+  rows: number;
+  receiver: string | null;
+  log: { time: string; message: string }[];
+};
 export type UploadResult = {
   namespace: string;
   table: string;
@@ -52,6 +67,16 @@ export type UploadResult = {
   snapshot_id: number | string | null;
   repairs: Repair[];
 };
+
+/** A response the backend answered with an error status; `status` lets a caller tell 404 from 409. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+  }
+}
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/lake${path}`, {
@@ -70,8 +95,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     body = parseLakeJson(text);
   } catch {
-    throw new Error(
+    throw new ApiError(
       `The data service returned an invalid response (${response.status})`,
+      response.status,
     );
   }
   if (!response.ok) {
@@ -80,10 +106,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       (Array.isArray(body?.detail)
         ? body.detail.map((item: { msg: string }) => item.msg).join("; ")
         : body?.detail);
-    throw new Error(
+    throw new ApiError(
       [body?.error || `Request failed (${response.status})`, details]
         .filter(Boolean)
         .join(": "),
+      response.status,
     );
   }
   return body as T;

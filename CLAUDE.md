@@ -84,7 +84,10 @@ Clients hold no S3 secret for table access. Lakekeeper vends short-lived
 MinIO STS credentials per table, which is why `minio-init` creates a non-root
 user: MinIO refuses `AssumeRole` for root. Lakekeeper runs without
 authentication, and the console runs arbitrary SQL and admin operations, so
-everything binds `127.0.0.1` and stays a localhost tool.
+everything binds `127.0.0.1` and stays a localhost tool. The one exception
+is the Arrow result stream of `/query/arrow`: `ARROW_HOST` binds it to
+`0.0.0.0` by default so a receiver on another machine can connect, and that
+stream has no authentication either.
 
 ### Backend: `backend/nqlake`
 

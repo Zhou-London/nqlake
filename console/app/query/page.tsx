@@ -24,15 +24,33 @@ import {
   TableBody,
   TableContainer,
   TableHeader,
+  ToggleButton,
+  toast,
   type SchemaNode,
 } from "@nowquant/nqui";
 import { SqlEditor, type SQLNamespace } from "@nowquant/nqui/sql";
-import { Check, History, Square, TerminalSquare } from "lucide-react";
+import { Cable, Check, History, Square, TerminalSquare } from "lucide-react";
+import {
+  ArrowTransfersPanel,
+  DEFAULT_STREAM_SETTINGS,
+  StreamSettingsButton,
+  isActive,
+  isValidPort,
+  startTransfer,
+  useArrowTransfers,
+  type StreamSettings,
+} from "@/components/arrow-stream";
 import { RowsGrid } from "@/components/rows-grid";
 import { useLake } from "@/components/lake-provider";
 import { api, tableSql, type Rows } from "@/lib/api";
 
-type HistoryItem = { sql: string; time: string; elapsed: number; rows: number };
+type HistoryItem = {
+  sql: string;
+  time: string;
+  elapsed: number;
+  /** `null` for an Arrow transfer, whose rows go to the receiver. */
+  rows: number | null;
+};
 const DEFAULT_SQL = "-- Start exploring your data here\nSELECT 1 AS ready;";
 
 export default function Query() {
@@ -42,10 +60,14 @@ export default function Query() {
   const [term, setTerm] = useState("");
   const [result, setResult] = useState<Rows | null>(null);
   const [error, setError] = useState("");
+  const [errorTitle, setErrorTitle] = useState("Query failed");
   const [elapsed, setElapsed] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [running, setRunning] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [stream, setStream] = useState<StreamSettings>(DEFAULT_STREAM_SETTINGS);
+  const arrow = useArrowTransfers();
   const [expanded, setExpanded] = useState<Set<string | number> | null>(null);
   const controller = useRef<AbortController | null>(null);
   const duckdb = status?.services.find((s) => s.name === "duckdb")?.ok;
@@ -101,28 +123,46 @@ export default function Query() {
       setError("Enter a SQL query.");
       return;
     }
+    if (streaming && !isValidPort(stream.port)) {
+      setErrorTitle("Transfer failed");
+      setError(
+        "The port must be a number from 0 to 65535. Fix it in the streaming settings.",
+      );
+      return;
+    }
     setRunning(true);
     setError("");
+    setErrorTitle(streaming ? "Transfer failed" : "Query failed");
     setElapsed(null);
     const start = performance.now();
     const abort = new AbortController();
     controller.current = abort;
     try {
-      const data = await api<Rows>("/query", {
-        method: "POST",
-        body: JSON.stringify({ sql: text, limit: Number(limit) }),
-        signal: abort.signal,
-      });
-      const duration = Math.round(performance.now() - start);
-      setResult(data);
-      setElapsed(duration);
+      let rows: number | null;
+      if (streaming) {
+        const transfer = await startTransfer(text, stream, abort.signal);
+        toast.success(
+          `Transfer #${transfer.id} is waiting on ${transfer.host}:${transfer.port}.`,
+        );
+        void arrow.refresh();
+        rows = null;
+      } else {
+        const data = await api<Rows>("/query", {
+          method: "POST",
+          body: JSON.stringify({ sql: text, limit: Number(limit) }),
+          signal: abort.signal,
+        });
+        setResult(data);
+        setElapsed(Math.round(performance.now() - start));
+        rows = data.row_count;
+      }
       setHistory((items) =>
         [
           {
             sql: text,
             time: new Date().toLocaleTimeString("en-US"),
-            elapsed: duration,
-            rows: data.row_count,
+            elapsed: Math.round(performance.now() - start),
+            rows,
           },
           ...items,
         ].slice(0, 20),
@@ -130,7 +170,9 @@ export default function Query() {
     } catch (err) {
       setError(
         abort.signal.aborted
-          ? "Stopped waiting for results. The server may still be running the query."
+          ? streaming
+            ? "Stopped waiting for the transfer. The server may still bind the port."
+            : "Stopped waiting for results. The server may still be running the query."
           : (err as Error).message,
       );
     } finally {
@@ -229,25 +271,56 @@ export default function Query() {
                       Stop waiting
                     </Button>
                   )}
-                  <Select
-                    aria-label="Row limit"
+                  <ToggleButton
                     size="sm"
-                    className="w-32"
+                    variant="soft"
+                    color="primary"
                     isDisabled={running}
-                    selectedKey={limit}
-                    onSelectionChange={(key) => setLimit(String(key))}
+                    isSelected={streaming}
+                    onChange={setStreaming}
                   >
-                    {[100, 500, 1000, 10000].map((n) => (
-                      <SelectItem key={n} id={String(n)}>
-                        {`${n} rows`}
-                      </SelectItem>
-                    ))}
-                  </Select>
+                    <Cable />
+                    Streaming
+                  </ToggleButton>
+                  {streaming ? (
+                    <>
+                      <Chip size="sm" color="primary">
+                        No row limit
+                      </Chip>
+                      <StreamSettingsButton
+                        settings={stream}
+                        onChange={setStream}
+                        isDisabled={running}
+                      />
+                    </>
+                  ) : (
+                    <Select
+                      aria-label="Row limit"
+                      size="sm"
+                      className="w-32"
+                      isDisabled={running}
+                      selectedKey={limit}
+                      onSelectionChange={(key) => setLimit(String(key))}
+                    >
+                      {[100, 500, 1000, 10000].map((n) => (
+                        <SelectItem key={n} id={String(n)}>
+                          {`${n} rows`}
+                        </SelectItem>
+                      ))}
+                    </Select>
+                  )}
                 </div>
               }
             />
             {error && (
-              <Alert color="error" title="Query failed" description={error} />
+              <Alert color="error" title={errorTitle} description={error} />
+            )}
+            {(streaming || arrow.transfers?.some((t) => isActive(t))) && (
+              <ArrowTransfersPanel
+                transfers={arrow.transfers}
+                error={arrow.error}
+                onRefresh={arrow.refresh}
+              />
             )}
             <Card>
               <CardHeader className="items-center">
@@ -258,8 +331,14 @@ export default function Query() {
                   </Chip>
                 )}
               </CardHeader>
-              {running || result ? (
-                <RowsGrid data={result} isLoading={running} />
+              {(running && !streaming) || result ? (
+                <RowsGrid data={result} isLoading={running && !streaming} />
+              ) : streaming ? (
+                <EmptyState
+                  icon={<Cable />}
+                  title="Streaming mode sends rows to a receiver"
+                  description="Run sends every row of the statement, however many, to a TCP port as an Arrow IPC stream. Nothing is loaded into the browser."
+                />
               ) : (
                 <EmptyState
                   icon={<TerminalSquare />}
@@ -302,7 +381,7 @@ export default function Query() {
                             </Cell>
                             <Cell className="text-muted">{item.time}</Cell>
                             <Cell align="end" numeric>
-                              {item.rows}
+                              {item.rows ?? "streamed"}
                             </Cell>
                             <Cell align="end" numeric>
                               {item.elapsed} ms

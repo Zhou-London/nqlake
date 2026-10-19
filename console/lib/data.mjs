@@ -42,3 +42,23 @@ export function isSameOrigin(origin, host, protocol) {
     return false;
   }
 }
+
+/** Python that reads one Arrow IPC stream from the address `POST /query/arrow` bound. */
+export function arrowReceiverSnippet(host, port) {
+  // 0.0.0.0 is every interface of the API host, not an address to dial.
+  const target =
+    host === "0.0.0.0"
+      ? 'HOST = "127.0.0.1"  # or the API host\'s address, from another machine'
+      : `HOST = ${JSON.stringify(host)}`;
+  return [
+    "import socket",
+    "",
+    "import pyarrow as pa",
+    "",
+    target,
+    `with socket.create_connection((HOST, ${Number(port)})) as sock:`,
+    '    with pa.ipc.open_stream(sock.makefile("rb")) as reader:',
+    "        for batch in reader:",
+    "            process(batch)  # one pyarrow.RecordBatch at a time",
+  ].join("\n");
+}

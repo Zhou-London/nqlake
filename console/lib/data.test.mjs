@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseLakeJson, toCsv, isSameOrigin } from "./data.mjs";
+import {
+  parseLakeJson,
+  toCsv,
+  isSameOrigin,
+  arrowReceiverSnippet,
+} from "./data.mjs";
 
 test("preserves 64-bit identifiers without rounding regular numbers", () => {
   const data = parseLakeJson(
@@ -42,4 +47,14 @@ test("same-origin checks retain localhost ports and reject foreign origins", () 
     false,
   );
   assert.equal(isSameOrigin("null", "127.0.0.1:40001", "http:"), false);
+});
+test("the Arrow receiver snippet quotes the address as Python literals", () => {
+  const code = arrowReceiverSnippet('12"7.0.0.1', "40005");
+  assert.match(code, /HOST = "12\\"7\.0\.0\.1"/);
+  assert.match(code, /create_connection\(\(HOST, 40005\)\)/);
+  assert.match(
+    arrowReceiverSnippet("0.0.0.0", 40005),
+    /HOST = "127\.0\.0\.1"  # or the API host's address/,
+  );
+  assert.match(code, /pa\.ipc\.open_stream\(sock\.makefile\("rb"\)\)/);
 });

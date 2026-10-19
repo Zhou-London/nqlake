@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import datetime as dt
-from pathlib import Path
 from typing import Any, Literal
+
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -112,15 +113,33 @@ class QueryStreamIn(BaseModel):
     sql: str = Field(examples=["SELECT * FROM lake.raw.nq_futures_mbo"])
     # Rows per record batch of the stream. The result itself has no limit.
     batch_size: int = Field(default=DEFAULT_BATCH_ROWS, ge=1, le=1_000_000)
-    # Absolute path of the Unix socket to bind; ARROW_SOCKET_PATH of .env when omitted.
-    socket_path: str | None = Field(default=None, examples=["/tmp/nqlake-arrow.sock"])
+    # Port to bind on ARROW_HOST; ARROW_PORT of .env when omitted, any free port when 0.
+    port: int | None = Field(default=None, ge=0, le=65535, examples=[40005])
 
 
-class ArrowStreamOut(BaseModel):
+class ArrowLogEntry(BaseModel):
     model_config = _FROM_ATTRIBUTES
-    # The bound socket; connect and read an Arrow IPC stream from it.
-    socket_path: Path
+    time: datetime
+    message: str
+
+
+class ArrowTransferOut(BaseModel):
+    model_config = _FROM_ATTRIBUTES
+    id: int
+    # The bound address; connect and read an Arrow IPC stream from it.
+    host: str
+    port: int
     batch_size: int
+    sql: str
+    # waiting, running, done, failed, abandoned, or closed.
+    state: str
+    started: datetime
+    ended: datetime | None
+    # Rows sent so far, or in all once the transfer ended.
+    rows: int
+    # Address of the receiver once one connected.
+    receiver: str | None
+    log: list[ArrowLogEntry]
 
 
 class RepairOut(BaseModel):

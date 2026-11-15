@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+app_home="$(cd "$(dirname "$0")" && pwd)"
+lib_dir="$(cd "$app_home/../lib" && pwd)"
+
+${{template_declares}}
+
+exec "${JAVA_HOME:+$JAVA_HOME/bin/}java" ${JAVA_OPTS:-} "${jvm_options[@]}" -cp "$app_classpath" ${{app_mainclass}} "$@"

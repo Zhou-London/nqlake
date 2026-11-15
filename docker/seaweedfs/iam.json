@@ -1,0 +1,48 @@
+{
+  "sts": {
+    "tokenDuration": "1h",
+    "maxSessionLength": "12h",
+    "issuer": "seaweedfs-sts"
+  },
+  "roles": [
+    {
+      "roleName": "iceberg-table-access",
+      "roleArn": "arn:aws:iam::000000000000:role/iceberg-table-access",
+      "trustPolicy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Federated": "iceberg-catalog"
+            },
+            "Action": [
+              "sts:AssumeRoleWithCredentials"
+            ]
+          }
+        ]
+      },
+      "attachedPolicies": [
+        "warehouse-access"
+      ]
+    }
+  ],
+  "policies": [
+    {
+      "name": "warehouse-access",
+      "document": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": "s3:*",
+            "Resource": [
+              "arn:aws:s3:::warehouse",
+              "arn:aws:s3:::warehouse/*"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

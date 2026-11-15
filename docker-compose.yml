@@ -1,0 +1,34 @@
+name: nqlake
+
+services:
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.53
+    command:
+      - mini
+      - -dir=/data
+      - -tableBucket=warehouse
+      - -bucket=landing
+      - -s3.externalUrl=http://localhost:8333
+      - -s3.iam.config=/etc/seaweedfs/iam.json
+      - -s3.iceberg.credentialRole=arn:aws:iam::000000000000:role/iceberg-table-access
+      - -s3.port.lance=0
+      - -webdav=false
+      - -admin.ui=false
+      - -master.telemetry=false
+    environment:
+      AWS_ACCESS_KEY_ID: ${NQLAKE_S3_ACCESS_KEY:-nqlake}
+      AWS_SECRET_ACCESS_KEY: ${NQLAKE_S3_SECRET_KEY:-nqlake-dev-secret}
+    volumes:
+      - seaweedfs-data:/data
+      - ./docker/seaweedfs/iam.json:/etc/seaweedfs/iam.json:ro
+    ports:
+      - "127.0.0.1:8333:8333"
+      - "127.0.0.1:8181:8181"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8333/healthz"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  seaweedfs-data:

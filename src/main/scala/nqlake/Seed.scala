@@ -12,7 +12,7 @@ object Seed {
   def run(
       spark: SparkSession,
       settings: Settings,
-      table: LakeTable,
+      sample: SampleTable,
       date: LocalDate,
       symbols: Int,
       rowsPerSymbol: Int
@@ -24,15 +24,15 @@ object Seed {
     val step       = floor(col("id") / symbols)
     val basePrice  = lit(100.0) + symbolNo
 
-    val rows = table match {
-      case LakeTable.Ohlcv => bars(ids, symbol, basePrice, openMicros, step)
-      case LakeTable.Mbo   => orderEvents(ids, symbol, basePrice, openMicros, step)
+    val rows = sample match {
+      case SampleTable.Ohlcv => bars(ids, symbol, basePrice, openMicros, step)
+      case SampleTable.Mbo   => orderEvents(ids, symbol, basePrice, openMicros, step)
     }
     val withRedelivery = rows.union(rows.sample(DuplicateFraction, seed = 1L))
-    val path           = table.landingPath(settings, date)
+    val path           = Landing.directory(settings, sample.table).toString
 
-    withRedelivery.write.mode("overwrite").parquet(path)
-    println(s"seed ${table.name} $date: $path")
+    withRedelivery.write.mode("append").parquet(path)
+    println(s"seed ${sample.table.name} $date: $path")
   }
 
   private def bars(ids: DataFrame, symbol: Column, basePrice: Column, openMicros: Long, step: Column): DataFrame = {

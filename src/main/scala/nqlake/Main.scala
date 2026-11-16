@@ -32,12 +32,12 @@ object Main {
       action match {
         case Action.Init =>
           Init.run(spark)
-        case Action.Seed(date, tables, symbols, rowsPerSymbol) =>
-          tables.foreach(Seed.run(spark, settings, _, date, symbols, rowsPerSymbol))
-        case Action.Ingest(date, tables) =>
-          tables.foreach(Ingest.run(spark, settings, _, date))
+        case Action.Seed(date, samples, symbols, rowsPerSymbol) =>
+          samples.foreach(Seed.run(spark, settings, _, date, symbols, rowsPerSymbol))
+        case Action.Upload(files, tables, key, assumeYes) =>
+          Upload.run(spark, settings, files, tables, key, assumeYes)
         case Action.Maintain(tables, retentionDays) =>
-          tables.foreach(Maintain.run(spark, _, retentionDays))
+          (if (tables.nonEmpty) tables else LakeTable.all(spark)).foreach(Maintain.run(spark, _, retentionDays))
         case Action.Mmap(query, output, batchRows, assumeYes) =>
           Mmap.run(spark, query, output, batchRows, assumeYes)
       }

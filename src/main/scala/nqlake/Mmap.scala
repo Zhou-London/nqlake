@@ -31,7 +31,7 @@ object Mmap {
       s"mmap $target: rows=${estimate.rows} estimated_size=${readable(estimate.bytes)} free_space=${readable(freeBytes)}"
     )
     if (estimate.bytes > freeBytes) throw new IllegalStateException(s"not enough free space in $directory")
-    if (!assumeYes && !confirmed(s"Write $target?")) throw new IllegalStateException("aborted, nothing written")
+    if (!assumeYes && !Terminal.confirmed(s"Write $target?")) throw new IllegalStateException("aborted, nothing written")
 
     val partial = directory.resolve(s".${target.getFileName}.${UUID.randomUUID()}.partial")
     try {
@@ -87,12 +87,6 @@ object Mmap {
       allocator.close()
     }
   }
-
-  private def confirmed(question: String): Boolean =
-    Option(System.console()) match {
-      case Some(console) => Option(console.readLine("%s [y/N] ", question)).exists(_.trim.equalsIgnoreCase("y"))
-      case None          => throw new IllegalStateException("no terminal to confirm on; pass --yes")
-    }
 
   private def readable(bytes: Long): String = {
     val units = Seq("B", "KiB", "MiB", "GiB", "TiB")

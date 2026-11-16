@@ -18,15 +18,18 @@ object Cli {
   sealed trait Action
   object Action {
     case object Init                                                                                 extends Action
-    final case class Seed(date: LocalDate, tables: Seq[LakeTable], symbols: Int, rowsPerSymbol: Int) extends Action
-    final case class Ingest(date: LocalDate, tables: Seq[LakeTable])                                 extends Action
-    final case class Maintain(tables: Seq[LakeTable], retentionDays: Int)                            extends Action
-    final case class Mmap(query: String, output: Path, batchRows: Int, assumeYes: Boolean)           extends Action
+    final case class Seed(date: LocalDate, samples: Seq[SampleTable], symbols: Int, rowsPerSymbol: Int)    extends Action
+    final case class Upload(files: Seq[String], tables: Seq[LakeTable], key: Seq[String], assumeYes: Boolean) extends Action
+    final case class Maintain(tables: Seq[LakeTable], retentionDays: Int)                                  extends Action
+    final case class Mmap(query: String, output: Path, batchRows: Int, assumeYes: Boolean)                 extends Action
   }
 
   private implicit val tableArgument: Argument[LakeTable] =
-    Argument.from(LakeTable.all.map(_.name).mkString("|")) { name =>
-      LakeTable.all.find(_.name == name).toValidNel(s"Unknown table: $name")
+    Argument.from("name")(name => LakeTable.named(name).toValidatedNel)
+
+  private implicit val sampleArgument: Argument[SampleTable] =
+    Argument.from(SampleTable.all.map(_.table.name).mkString("|")) { name =>
+      SampleTable.all.find(_.table.name == name).toValidNel(s"Unknown sample table: $name")
     }
 
   private def setting[A: Argument](name: String, env: String, default: A, help: String): Opts[A] =
@@ -56,11 +59,17 @@ object Cli {
   private val date: Opts[LocalDate] =
     Opts.option[LocalDate]("date", "Trading date, YYYY-MM-DD", short = "d")
 
-  private val tables: Opts[Seq[LakeTable]] =
+  private def tables(help: String): Opts[Seq[LakeTable]] =
+    Opts.options[LakeTable]("table", help, short = "t").map(_.toList.distinct).withDefault(Seq.empty)
+
+  private val samples: Opts[Seq[SampleTable]] =
     Opts
-      .options[LakeTable]("table", "Table to process; repeatable (default: all tables)", short = "t")
+      .options[SampleTable]("table", "Sample table to generate; repeatable (default: all sample tables)", short = "t")
       .map(_.toList.distinct)
-      .withDefault(LakeTable.all)
+      .withDefault(SampleTable.all)
+
+  private val assumeYes: Opts[Boolean] =
+    Opts.flag("yes", "Go ahead without asking for confirmation", short = "y").orFalse
 
   private val init: Opts[Action] =
     Opts.subcommand("init", "Create the namespace and tables if they do not exist")(Opts(Action.Init))
@@ -69,20 +78,44 @@ object Cli {
     Opts.subcommand("seed", "Write generated sample Parquet files into the landing bucket") {
       (
         date,
-        tables,
+        samples,
         positive("symbols", 20, "Number of symbols"),
         positive("rows-per-symbol", 390, "Rows generated per symbol")
       ).mapN(Action.Seed.apply)
     }
 
-  private val ingest: Opts[Action] =
-    Opts.subcommand("ingest", "Deduplicate one day of landed files and merge them into the tables") {
-      (date, tables).mapN(Action.Ingest.apply)
+  private val upload: Opts[Action] =
+    Opts.subcommand(
+      "upload",
+      "Load Parquet files into a table, creating it if needed; without files, load and then delete what is in the landing bucket"
+    ) {
+      (
+        Opts.arguments[String]("file").orEmpty,
+        tables(
+          "Table to load into, created if it does not exist. Required with files; " +
+            "without files it is repeatable (default: every directory in the landing bucket)"
+        ),
+        Opts
+          .option[String](
+            "key",
+            "Primary key columns of a new table, comma-separated; without it rows are appended",
+            short = "k",
+            metavar = "columns"
+          )
+          .map(_.split(',').map(_.trim).filter(_.nonEmpty).toSeq.distinct)
+          .withDefault(Seq.empty),
+        assumeYes
+      ).mapN(Action.Upload.apply)
+        .validate("Files need exactly one --table")(upload => upload.files.isEmpty || upload.tables.size == 1)
+        .validate("--key needs exactly one --table")(upload => upload.key.isEmpty || upload.tables.size == 1)
     }
 
   private val maintain: Opts[Action] =
     Opts.subcommand("maintain", "Compact and sort data files, expire snapshots, remove orphan files") {
-      (tables, positive("retention-days", 7, "Keep snapshots and unreferenced files newer than this many days"))
+      (
+        tables("Table to maintain; repeatable (default: every table)"),
+        positive("retention-days", 7, "Keep snapshots and unreferenced files newer than this many days")
+      )
         .mapN(Action.Maintain.apply)
     }
 
@@ -101,7 +134,7 @@ object Cli {
         query,
         Opts.option[Path]("output", "File to create or atomically replace", short = "o"),
         positive("batch-rows", 1000000, "Rows per record batch"),
-        Opts.flag("yes", "Write without asking for confirmation", short = "y").orFalse
+        assumeYes
       ).mapN(Action.Mmap.apply)
     }
 
@@ -115,7 +148,7 @@ object Cli {
     command.parse(args.map(arg => if (arg == ShortHelp) LongHelp else arg), env)
 
   private val command: Command[Request] =
-    Command(BuildInfo.name, "Ingest landed market data into the NQLake Iceberg lakehouse and maintain it") {
-      version.orElse((settings, init.orElse(seed).orElse(ingest).orElse(maintain).orElse(mmap)).mapN(Invocation.apply))
+    Command(BuildInfo.name, "Upload market data into the NQLake Iceberg lakehouse and maintain it") {
+      version.orElse((settings, init.orElse(seed).orElse(upload).orElse(maintain).orElse(mmap)).mapN(Invocation.apply))
     }
 }

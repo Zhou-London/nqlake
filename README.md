@@ -20,6 +20,7 @@ market data in one place, so backtests and research can read it.
 
 - **All data levels**: every kind of data, from OHLCV bars to MBO orders, goes into the lake.
 - **Daily load**: new data first waits in a landing area. After the market closes, it is loaded into the lake once a day.
+- **Type check on upload**: `upload` lists every column whose type Iceberg cannot store, and asks before it converts the column.
 - **The lake looks after itself**: the lakehouse sorts and removes duplicates. Writers do not need to.
 - **In-process reads**: C++ backtest programs read Iceberg tables directly through DuckDB. There is no service in between.
 
@@ -39,7 +40,7 @@ The data path is all Scala/Java. Python is only used for scripts that run as sep
 ## Data flow
 
 1. **Land**: a C++ program writes processed data as Parquet files into the `landing` bucket.
-2. **Load**: after the market closes, a Scala program runs Spark. It reads the landing files, sorts them, removes duplicates and writes them into Iceberg tables in `warehouse`.
+2. **Load**: after the market closes, a Scala program runs Spark. It reads the landing files, sorts them, removes duplicates and writes them into Iceberg tables in `warehouse`. Then it deletes the landing files.
 3. **Read**: during a backtest, a C++ program queries the Iceberg tables with its own DuckDB.
 
 ## How it runs
@@ -62,27 +63,62 @@ alias nqlake=target/universal/stage/bin/nqlake
 
 nqlake init
 nqlake seed --date 2026-11-13
-nqlake ingest --date 2026-11-13
+nqlake upload
 nqlake maintain
 ```
 
 | Command | What it does |
 | --- | --- |
 | `init` | Creates namespace `market` and tables `ohlcv` and `mbo` |
-| `seed --date D` | Makes sample Parquet files and writes them to `s3://landing/<table>/date=D/` |
-| `ingest --date D` | Reads the landing files for day D, removes duplicates by primary key, and MERGEs them into the table. Running it again gives the same result. |
-| `maintain` | Merges data files by sort key, and removes old snapshots and orphan files |
+| `seed --date D` | Makes sample Parquet files for day D and adds them to `s3://landing/<table>/` |
+| `upload` | Loads every file in the landing bucket into the table named by its folder, then deletes the files |
+| `upload F... --table T` | Loads the Parquet files `F` into table `T`. Creates `T` when it does not exist. |
+| `maintain` | Compacts data files, and removes old snapshots and orphan files |
 | `mmap --sql Q --output F` | Writes a query result as one uncompressed Arrow IPC file, so another program can mmap it |
 
-`ingest`, `seed` and `maintain` take `--table ohlcv|mbo`, which you can repeat.
-By default they work on all tables. `nqlake -h` and `nqlake <command> -h` list
-all options and environment variables. Short options: `-d` date, `-t` table,
-`-o` output file, `-y` skip the confirm step.
+`upload`, `seed` and `maintain` take `--table`, which you can repeat. By default
+they work on all tables. `seed` only knows `ohlcv` and `mbo`. `nqlake -h` and
+`nqlake <command> -h` list all options and environment variables. Short
+options: `-d` date, `-t` table, `-k` key, `-o` output file, `-y` skip the
+confirm step.
 
 Exit codes: `0` success, `1` the run failed, `2` bad arguments.
 
 Tables are split by `day(ts)` and sorted by primary key. The `ohlcv` key is
 `(symbol, ts)`. The `mbo` key is `(symbol, ts, sequence)`.
+
+### upload
+
+```bash
+nqlake upload
+nqlake upload trades.parquet --table trades --key symbol,ts,order_id
+```
+
+- Without files, `upload` reads the landing bucket. The folder `s3://landing/<table>/` feeds the table `<table>`. `upload` deletes the files it loaded after the write succeeds.
+- With files, `--table` is required. A file can be a local path, an `s3a://` URL, or a folder of Parquet files. `upload` keeps these files.
+- `upload` creates the table when it does not exist. `--key` sets the primary key of the new table. A table with a `ts` timestamp column is split by `day(ts)`.
+- A table with a key gets one row per key: `upload` removes duplicates and MERGEs. Running the same upload again gives the same result. Key columns reject NULL.
+- A table without a key gets every row appended. Duplicates stay.
+- All files of one upload must have the same columns and types.
+
+`upload` converts these Parquet types, because Iceberg format v2 has no equal type:
+
+| In the file | In the table | Notes |
+| --- | --- | --- |
+| `timestamp[ns]` | `timestamp` (microseconds) | Nanoseconds are truncated |
+| INT96 timestamp | `timestamp` (microseconds) | Nanoseconds are truncated |
+| `uint8`, `uint16`, `int8`, `int16` | `int` |  |
+| `uint32` | `bigint` |  |
+| `uint64` | `decimal(20,0)` |  |
+
+For an existing table, `upload` also converts each column to the type of the
+table column. A value that does not fit fails the upload, and the table stays
+unchanged. Columns that the table lacks are dropped. Columns that the files
+lack are written as NULL.
+
+`upload` prints each of these cases as a warning and waits for you to confirm.
+`--yes` skips this. Without a terminal, `--yes` is required. An upload without
+warnings starts at once.
 
 ### mmap
 

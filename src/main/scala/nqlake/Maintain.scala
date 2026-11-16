@@ -15,7 +15,8 @@ object Maintain {
     def call(procedure: String): Array[Row] =
       spark.sql(s"CALL ${Lake.Catalog}.system.$procedure").collect()
 
-    val compacted = call(s"rewrite_data_files($target, strategy => 'sort')").head
+    val strategy  = if (table.isSorted(spark)) "sort" else "binpack"
+    val compacted = call(s"rewrite_data_files($target, strategy => '$strategy')").head
     call(s"rewrite_manifests($target)")
     val expired = call(s"expire_snapshots($target, older_than => TIMESTAMP '$cutoff')").head
     val orphans = call(s"remove_orphan_files($target, older_than => TIMESTAMP '$cutoff')")

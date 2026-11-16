@@ -1,3 +1,6 @@
 .env
 target/
 .bsp/
+node_modules/
+.next/
+*.tsbuildinfo

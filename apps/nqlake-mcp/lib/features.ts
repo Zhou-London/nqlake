@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { describeFeature } from "./glossary";
+import { describeFeature, featureTerm } from "./glossary";
 import { CATALOG, identifier, query } from "./lake";
 
 export class InputError extends Error {}
@@ -13,7 +13,7 @@ const QUANTILES = [0.05, 0.25, 0.5, 0.75, 0.95];
 const RECENT_VALUES = 8;
 const SIGNIFICANT_DIGITS = 6;
 
-export type Feature = { name: string; group: string; type: string; description: string | null };
+export type Feature = { name: string; term: string; group: string; type: string; description: string | null };
 export type FeatureGroup = { group: string; features: Feature[] };
 export type SymbolCoverage = { symbol: string; rows: number; first: string; last: string };
 export type FeatureTable = { table: string; groups: FeatureGroup[]; symbols: SymbolCoverage[] };
@@ -21,6 +21,7 @@ export type FeatureRow = { ts: string } & Record<string, number | string | null>
 export type LatestFeatures = { table: string; symbol: string; as_of: string | null; rows: FeatureRow[] };
 export type FeatureStats = {
   feature: string;
+  term: string;
   description: string | null;
   current: number | null;
   percentile: number | null;
@@ -139,6 +140,7 @@ export async function featuresOf(name: string): Promise<Feature[]> {
     .filter((column) => column.column_name.includes(GROUP_SEPARATOR) && NUMERIC_TYPE.test(column.column_type))
     .map((column) => ({
       name: column.column_name,
+      term: featureTerm(column.column_name),
       group: column.column_name.slice(0, column.column_name.indexOf(GROUP_SEPARATOR)),
       type: column.column_type,
       description: describeFeature(column.column_name),
@@ -285,6 +287,7 @@ export async function featureStats(selection: Selection & { lookback: number }):
       const zscore = row.current != null && row.mean != null && row.std ? (row.current - row.mean) / row.std : null;
       return {
         feature: feature.name,
+        term: feature.term,
         description: feature.description,
         current: rounded(row.current),
         percentile: rounded(row.percentile),

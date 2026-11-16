@@ -22,7 +22,6 @@ import { FeatureStandings } from "@/components/feature-standings";
 import { type FeatureLine, MarketChart } from "@/components/market-chart";
 import { SuggestionPanel } from "@/components/suggestion-panel";
 import type { Feature, FeatureTable, SeriesPoint } from "@/lib/features";
-import { featureLabel } from "@/lib/format";
 import type { MarketSymbol, Ohlcv, OhlcvBar } from "@/lib/ohlcv";
 import { symbolsOf } from "@/lib/market";
 import type { SuggestionView } from "@/lib/suggestions";
@@ -110,7 +109,7 @@ export function MarketWorkspace({ symbol: requested }: { symbol: string }) {
     () =>
       charted.map((feature) => ({
         key: feature.key,
-        feature: feature.name,
+        term: feature.term,
         points: series.held[feature.key]?.points ?? NO_POINTS,
       })),
     [charted, series.held],
@@ -174,7 +173,7 @@ export function MarketWorkspace({ symbol: requested }: { symbol: string }) {
                   <MenuSection key={section.id} title={section.title}>
                     {section.features.map((feature) => (
                       <MenuItem key={feature.key} id={feature.key}>
-                        {featureLabel(feature.name)}
+                        {feature.term}
                       </MenuItem>
                     ))}
                   </MenuSection>

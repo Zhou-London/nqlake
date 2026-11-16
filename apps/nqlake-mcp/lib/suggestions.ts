@@ -15,7 +15,7 @@ const suggestion = z.object({
   stance: z.enum(["bullish", "bearish", "neutral"]),
   confidence: z.number().min(0).max(1).optional().describe("0 to 1"),
   title: z.string().min(1).max(120).describe("One line that states the suggestion"),
-  body: z.string().min(1).max(4000).describe("The reasoning, citing feature values"),
+  body: z.string().min(1).max(4000).describe("The reasoning, citing feature values by their terms"),
   sources: z.array(source).min(1).max(32).describe("Every feature table the suggestion relies on"),
   features: z
     .array(z.string().min(1))

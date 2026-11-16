@@ -15,7 +15,8 @@ import {
 } from "@nowquant/nqui";
 import { Markdown } from "@nowquant/nqui/markdown";
 import { Lightbulb, Minus, RefreshCw, TrendingDown, TrendingUp } from "lucide-react";
-import { featureLabel, utc } from "@/lib/format";
+import { utc } from "@/lib/format";
+import { featureTerm } from "@/lib/glossary";
 import type { SuggestionView } from "@/lib/suggestions";
 import type { Loaded } from "@/lib/use-json";
 
@@ -66,7 +67,7 @@ export function SuggestionPanel({ suggestions }: { suggestions: Loaded<Suggestio
               <div className="flex flex-wrap gap-1">
                 {suggestion.features.map((feature) => (
                   <Chip key={feature} size="sm" color="neutral">
-                    {featureLabel(feature)}
+                    {featureTerm(feature)}
                   </Chip>
                 ))}
               </div>

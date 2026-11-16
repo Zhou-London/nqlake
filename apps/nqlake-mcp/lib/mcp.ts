@@ -25,6 +25,8 @@ Workflow for writing suggestions:
 
 A symbol keeps one suggestion: writing replaces the earlier one and no history is kept.
 Every tool except write_suggestions is read-only. Feature columns are named <group>.<feature>.
+Each feature has a term, its name in plain words. Name features by their terms in the title and body of a suggestion.
+Pass column names only in features.
 Every bar, OHLCV or feature, is stamped with its closing time.`;
 
 const READ_ONLY = { readOnlyHint: true, openWorldHint: false };
@@ -53,7 +55,7 @@ export function featureServer(access: Access): McpServer {
     "list_feature_tables",
     {
       title: "List feature tables",
-      description: "Lists every feature table with its feature groups, feature descriptions and symbol coverage.",
+      description: "Lists every feature table with its feature groups, feature terms and descriptions, and symbol coverage.",
       annotations: READ_ONLY,
     },
     () => attempt(listFeatureTables),
@@ -63,7 +65,7 @@ export function featureServer(access: Access): McpServer {
     "describe_feature_table",
     {
       title: "Describe a feature table",
-      description: "Returns the feature groups, feature descriptions and symbol coverage of one feature table.",
+      description: "Returns the feature groups, feature terms and descriptions, and symbol coverage of one feature table.",
       inputSchema: tableShape,
       annotations: READ_ONLY,
     },
@@ -75,8 +77,8 @@ export function featureServer(access: Access): McpServer {
     {
       title: "Summarize features",
       description:
-        "Summarizes each feature of one symbol over its newest bars: current value, percentile and z-score of the " +
-        "current value, mean, standard deviation, quantiles, and the newest values (newest first). " +
+        "Summarizes each feature of one symbol over its newest bars: term, current value, percentile and z-score of " +
+        "the current value, mean, standard deviation, quantiles, and the newest values (newest first). " +
         "Returns as_of, the time of the newest bar read.",
       inputSchema: statsShape,
       annotations: READ_ONLY,

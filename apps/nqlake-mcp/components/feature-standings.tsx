@@ -91,12 +91,12 @@ export function FeatureStandings({
       {
         id: "feature",
         header: "Feature",
-        accessorFn: (row) => row.feature,
-        size: 220,
+        accessorFn: (row) => row.term,
+        size: 260,
         cell: ({ row }) => {
           const name = (
             <Button variant="link" color="neutral" size="sm" onPress={() => toggle.current(row.key)}>
-              {row.feature}
+              {row.term}
             </Button>
           );
           return row.description ? (

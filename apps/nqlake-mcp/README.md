@@ -53,8 +53,10 @@ A feature table is a table in namespace `market` whose name ends in `_feat`.
 It has a `symbol` column and a `ts` timestamp column. A feature is a numeric
 column named `<group>.<feature>`, for example `ta_ohlcv.rsi`.
 
-`lib/glossary.ts` holds the description of each feature. The tools return the
-descriptions to the agent.
+`lib/glossary.ts` holds the term and the description of each feature. The term
+is the name of the feature in plain words, for example `Relative strength
+index` for `ta_ohlcv.rsi`. The UI shows the terms. The tools return the terms
+and the descriptions to the agent.
 
 ## Feature API
 

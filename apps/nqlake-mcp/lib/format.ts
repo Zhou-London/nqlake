@@ -17,8 +17,6 @@ export const utc = (instant: string) => `${utcMinutes.format(new Date(instant))}
 
 export const utcSeconds = (epochSeconds: number) => utc(new Date(epochSeconds * 1000).toISOString());
 
-export const featureLabel = (column: string) => column.slice(column.indexOf(".") + 1);
-
 export const compact = (value: number | null | undefined) => (value == null ? "—" : formatCompact(value));
 
 export const decimalsFor = (spread: number | null | undefined) =>

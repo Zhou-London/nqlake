@@ -29,7 +29,7 @@ const VOLUME_OPACITY = 0.45;
 const PRICE_DECIMALS = 2;
 const LEGEND = "pointer-events-none absolute left-2 z-10 flex rounded bg-surface/80 px-1 text-xs tabular-nums";
 
-export type FeatureLine = { key: string; feature: string; points: SeriesPoint[] };
+export type FeatureLine = { key: string; term: string; points: SeriesPoint[] };
 
 type Plot = {
   chart: IChartApi;
@@ -235,7 +235,7 @@ export function MarketChart({
             className={`${LEGEND} gap-2`}
             style={{ top: PRICE_PANE_HEIGHT + position * FEATURE_PANE_HEIGHT + LEGEND_INSET }}
           >
-            <span className="text-muted">{line.feature}</span>
+            <span className="text-muted">{line.term}</span>
             <span>{scaled(point?.[1], decimals.get(line.key) ?? PRICE_DECIMALS)}</span>
           </div>
         );

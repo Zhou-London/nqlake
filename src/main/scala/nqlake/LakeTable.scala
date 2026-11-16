@@ -17,16 +17,13 @@ final case class LakeTable(name: String) {
 
   def isSorted(spark: SparkSession): Boolean = iceberg(spark).sortOrder().isSorted
 
-  def create(spark: SparkSession, schema: StructType, key: Seq[String]): Unit = {
+  def create(spark: SparkSession, schema: StructType, key: Seq[String], partitioning: Partitioning): Unit = {
     val columns = StructType(schema.map(field => field.copy(nullable = field.nullable && !key.contains(field.name))))
-    val partitionedByDay = schema.exists { field =>
-      field.name == LakeTable.EventTime && (field.dataType == TimestampType || field.dataType == TimestampNTZType)
-    }
     spark.sql(s"CREATE NAMESPACE IF NOT EXISTS ${Lake.Catalog}.${LakeTable.Namespace}")
     spark.sql(s"""
       CREATE TABLE $identifier (${columns.toDDL})
       USING iceberg
-      ${if (partitionedByDay) s"PARTITIONED BY (days(${LakeTable.EventTime}))" else ""}
+      ${partitioning.transform.fold("")(transform => s"PARTITIONED BY ($transform(${LakeTable.EventTime}))")}
       TBLPROPERTIES (
         'format-version' = '2',
         'write.parquet.compression-codec' = 'zstd'
@@ -57,7 +54,21 @@ object LakeTable {
       .toSeq
       .map(row => LakeTable(row.getAs[String]("tableName")))
 
+  def hasEventTime(schema: StructType): Boolean =
+    schema.exists(field => field.name == EventTime && (field.dataType == TimestampType || field.dataType == TimestampNTZType))
+
   def quoted(column: String): String = s"`${column.replace("`", "``")}`"
+}
+
+sealed abstract class Partitioning(val name: String, val transform: Option[String])
+
+object Partitioning {
+  case object Day           extends Partitioning("day", Some("days"))
+  case object Month         extends Partitioning("month", Some("months"))
+  case object Year          extends Partitioning("year", Some("years"))
+  case object Unpartitioned extends Partitioning("none", None)
+
+  val all: Seq[Partitioning] = Seq(Day, Month, Year, Unpartitioned)
 }
 
 sealed abstract class SampleTable(name: String, val key: Seq[String], columns: String) {

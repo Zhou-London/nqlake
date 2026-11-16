@@ -74,13 +74,13 @@ nqlake maintain
 | `upload` | Loads every file in the landing bucket into the table named by its folder, then deletes the files |
 | `upload F... --table T` | Loads the Parquet files `F` into table `T`. Creates `T` when it does not exist. |
 | `maintain` | Compacts data files, and removes old snapshots and orphan files |
-| `mmap --sql Q --output F` | Writes a query result as one uncompressed Arrow IPC file, so another program can mmap it |
+| `mmap --sql Q` | Writes a query result as one uncompressed Arrow IPC file, so another program can mmap it |
 
 `upload`, `seed` and `maintain` take `--table`, which you can repeat. By default
 they work on all tables. `seed` only knows `ohlcv` and `mbo`. `nqlake -h` and
 `nqlake <command> -h` list all options and environment variables. Short
-options: `-d` date, `-t` table, `-k` key, `-o` output file, `-y` skip the
-confirm step.
+options: `-d` date, `-t` table, `-k` key, `-p` partition, `-o` output file,
+`-y` skip the confirm step.
 
 Exit codes: `0` success, `1` the run failed, `2` bad arguments.
 
@@ -96,7 +96,8 @@ nqlake upload trades.parquet --table trades --key symbol,ts,order_id
 
 - Without files, `upload` reads the landing bucket. The folder `s3://landing/<table>/` feeds the table `<table>`. `upload` deletes the files it loaded after the write succeeds.
 - With files, `--table` is required. A file can be a local path, an `s3a://` URL, or a folder of Parquet files. `upload` keeps these files.
-- `upload` creates the table when it does not exist. `--key` sets the primary key of the new table. A table with a `ts` timestamp column is split by `day(ts)`.
+- `upload` creates the table when it does not exist. `--key` sets the primary key of the new table.
+- A new table with a `ts` timestamp column is split by `day(ts)`. `--partition day|month|year|none` sets another split. Use `month` or `none` for hourly or daily bars: `day` gives one small file per day.
 - A table with a key gets one row per key: `upload` removes duplicates and MERGEs. Running the same upload again gives the same result. Key columns reject NULL.
 - A table without a key gets every row appended. Duplicates stay.
 - All files of one upload must have the same columns and types.
@@ -123,7 +124,7 @@ warnings starts at once.
 ### mmap
 
 ```bash
-nqlake mmap --output /data/backtest/mbo.arrow --sql "
+nqlake mmap --sql "
   SELECT symbol, ts, sequence, action, side, price, size
   FROM market.mbo
   WHERE ts >= TIMESTAMP '2026-11-13' AND ts < TIMESTAMP '2026-11-14'
@@ -131,10 +132,17 @@ nqlake mmap --output /data/backtest/mbo.arrow --sql "
 ```
 
 - Pass the query with `--sql`, or read it from a file with `--sql-file`. Only queries are allowed.
+- The file is written to `~/.nqlake/mmap.arrow`. `--output` or `NQLAKE_MMAP_OUTPUT` sets another path. `mmap` creates the folder.
 - The file is in Arrow IPC file format. Rows keep the order of the query's `ORDER BY`. Each record batch has `--batch-rows` rows (1 million by default). The last batch can be smaller.
 - `ts` has the type `timestamp[us, UTC]`.
 - Before writing, it prints the row count, the expected size and the free space on the target disk, then waits for you to confirm. `--yes` skips this. Without a terminal, `--yes` is required.
 - Data is first written to `.<file name>.<uuid>.partial` in the same folder. After it is flushed to disk, it is renamed to the target file. If the target file exists, it is replaced in one step. Programs that already mmap the old file keep reading the old content.
+
+## Apps
+
+[`apps/nqlake-mcp`](apps/nqlake-mcp) is a Next.js app. It serves the feature tables to a UI and to agents over MCP, and stores the suggestions an agent writes.
+
+## Read with DuckDB
 
 Read tables with DuckDB:
 

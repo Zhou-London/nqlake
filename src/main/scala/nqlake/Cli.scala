@@ -1,7 +1,7 @@
 package nqlake
 
 import java.net.URI
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, Path, Paths}
 import java.time.LocalDate
 
 import scala.util.Try
@@ -19,7 +19,13 @@ object Cli {
   object Action {
     case object Init                                                                                 extends Action
     final case class Seed(date: LocalDate, samples: Seq[SampleTable], symbols: Int, rowsPerSymbol: Int)    extends Action
-    final case class Upload(files: Seq[String], tables: Seq[LakeTable], key: Seq[String], assumeYes: Boolean) extends Action
+    final case class Upload(
+        files: Seq[String],
+        tables: Seq[LakeTable],
+        key: Seq[String],
+        partitioning: Option[Partitioning],
+        assumeYes: Boolean
+    ) extends Action
     final case class Maintain(tables: Seq[LakeTable], retentionDays: Int)                                  extends Action
     final case class Mmap(query: String, output: Path, batchRows: Int, assumeYes: Boolean)                 extends Action
   }
@@ -27,14 +33,19 @@ object Cli {
   private implicit val tableArgument: Argument[LakeTable] =
     Argument.from("name")(name => LakeTable.named(name).toValidatedNel)
 
+  private implicit val partitioningArgument: Argument[Partitioning] =
+    Argument.from(Partitioning.all.map(_.name).mkString("|")) { name =>
+      Partitioning.all.find(_.name == name).toValidNel(s"Unknown partitioning: $name")
+    }
+
   private implicit val sampleArgument: Argument[SampleTable] =
     Argument.from(SampleTable.all.map(_.table.name).mkString("|")) { name =>
       SampleTable.all.find(_.table.name == name).toValidNel(s"Unknown sample table: $name")
     }
 
-  private def setting[A: Argument](name: String, env: String, default: A, help: String): Opts[A] =
+  private def setting[A: Argument](name: String, env: String, default: A, help: String, short: String = ""): Opts[A] =
     Opts
-      .option[A](name, s"$help (env: $env, default: $default)")
+      .option[A](name, s"$help (env: $env, default: $default)", short = short)
       .orElse(Opts.env[A](env, help))
       .withDefault(default)
 
@@ -104,10 +115,19 @@ object Cli {
           )
           .map(_.split(',').map(_.trim).filter(_.nonEmpty).toSeq.distinct)
           .withDefault(Seq.empty),
+        Opts
+          .option[Partitioning](
+            "partition",
+            s"Time span of ${LakeTable.EventTime} that one partition of a new table holds " +
+              s"(default: day, or none without a ${LakeTable.EventTime} timestamp column)",
+            short = "p"
+          )
+          .orNone,
         assumeYes
       ).mapN(Action.Upload.apply)
         .validate("Files need exactly one --table")(upload => upload.files.isEmpty || upload.tables.size == 1)
         .validate("--key needs exactly one --table")(upload => upload.key.isEmpty || upload.tables.size == 1)
+        .validate("--partition needs exactly one --table")(upload => upload.partitioning.isEmpty || upload.tables.size == 1)
     }
 
   private val maintain: Opts[Action] =
@@ -118,6 +138,8 @@ object Cli {
       )
         .mapN(Action.Maintain.apply)
     }
+
+  private val DefaultMmapOutput = Paths.get(sys.props("user.home"), ".nqlake", "mmap.arrow")
 
   private val query: Opts[String] =
     Opts
@@ -132,7 +154,7 @@ object Cli {
     Opts.subcommand("mmap", "Write a query result as one uncompressed Arrow IPC file for another process to mmap") {
       (
         query,
-        Opts.option[Path]("output", "File to create or atomically replace", short = "o"),
+        setting("output", "NQLAKE_MMAP_OUTPUT", DefaultMmapOutput, "File to create or atomically replace", short = "o"),
         positive("batch-rows", 1000000, "Rows per record batch"),
         assumeYes
       ).mapN(Action.Mmap.apply)

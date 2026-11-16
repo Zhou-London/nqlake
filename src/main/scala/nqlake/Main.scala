@@ -34,8 +34,8 @@ object Main {
           Init.run(spark)
         case Action.Seed(date, samples, symbols, rowsPerSymbol) =>
           samples.foreach(Seed.run(spark, settings, _, date, symbols, rowsPerSymbol))
-        case Action.Upload(files, tables, key, assumeYes) =>
-          Upload.run(spark, settings, files, tables, key, assumeYes)
+        case Action.Upload(files, tables, key, partitioning, assumeYes) =>
+          Upload.run(spark, settings, files, tables, key, partitioning, assumeYes)
         case Action.Maintain(tables, retentionDays) =>
           (if (tables.nonEmpty) tables else LakeTable.all(spark)).foreach(Maintain.run(spark, _, retentionDays))
         case Action.Mmap(query, output, batchRows, assumeYes) =>

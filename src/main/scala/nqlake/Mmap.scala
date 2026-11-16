@@ -22,17 +22,18 @@ object Mmap {
   def run(spark: SparkSession, query: String, output: Path, batchRows: Int, assumeYes: Boolean): Unit = {
     val target    = output.toAbsolutePath.normalize()
     val directory = target.getParent
-    if (!Files.isDirectory(directory)) throw new IllegalArgumentException(s"output directory does not exist: $directory")
     val rows = spark.sql(s"SELECT * FROM (\n${query.trim.stripSuffix(";")}\n)")
 
     val estimate  = estimateSize(rows)
-    val freeBytes = Files.getFileStore(directory).getUsableSpace
+    val existing  = Iterator.iterate(directory)(_.getParent).find(Files.isDirectory(_)).get
+    val freeBytes = Files.getFileStore(existing).getUsableSpace
     Console.err.println(
       s"mmap $target: rows=${estimate.rows} estimated_size=${readable(estimate.bytes)} free_space=${readable(freeBytes)}"
     )
     if (estimate.bytes > freeBytes) throw new IllegalStateException(s"not enough free space in $directory")
     if (!assumeYes && !Terminal.confirmed(s"Write $target?")) throw new IllegalStateException("aborted, nothing written")
 
+    Files.createDirectories(directory)
     val partial = directory.resolve(s".${target.getFileName}.${UUID.randomUUID()}.partial")
     try {
       val written = write(rows, partial, batchRows)

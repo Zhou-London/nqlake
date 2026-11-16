@@ -6,7 +6,9 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{StructField, StructType}
 
 object Upload {
-  private final case class Target(schema: StructType, key: Seq[String], isNew: Boolean)
+  private final case class Target(schema: StructType, key: Seq[String], creation: Option[Partitioning]) {
+    val isNew: Boolean = creation.nonEmpty
+  }
 
   def run(
       spark: SparkSession,
@@ -14,11 +16,14 @@ object Upload {
       files: Seq[String],
       tables: Seq[LakeTable],
       key: Seq[String],
+      partitioning: Option[Partitioning],
       assumeYes: Boolean
   ): Unit = {
     val hadoop = spark.sparkContext.hadoopConfiguration
-    if (files.nonEmpty)
-      load(spark, tables.head, files.flatMap(file => Landing.filesUnder(Landing.location(file), hadoop)), key, assumeYes)
+    def load(table: LakeTable, parquetFiles: Seq[Path]): Unit =
+      this.load(spark, table, parquetFiles, key, partitioning, assumeYes)
+
+    if (files.nonEmpty) load(tables.head, files.flatMap(file => Landing.filesUnder(Landing.location(file), hadoop)))
     else {
       val landedTables = if (tables.nonEmpty) tables else Landing.tables(settings, hadoop)
       if (landedTables.isEmpty) println("upload: nothing in landing")
@@ -26,7 +31,7 @@ object Upload {
         val landed = Landing.files(settings, table, hadoop)
         if (landed.isEmpty) println(s"upload ${table.name}: nothing in landing")
         else {
-          load(spark, table, landed, key, assumeYes)
+          load(table, landed)
           Landing.remove(landed, hadoop)
           println(s"upload ${table.name}: removed ${counted(landed.size, "landing file")}")
         }
@@ -34,10 +39,17 @@ object Upload {
     }
   }
 
-  private def load(spark: SparkSession, table: LakeTable, files: Seq[Path], key: Seq[String], assumeYes: Boolean): Unit = {
+  private def load(
+      spark: SparkSession,
+      table: LakeTable,
+      files: Seq[Path],
+      key: Seq[String],
+      partitioning: Option[Partitioning],
+      assumeYes: Boolean
+  ): Unit = {
     if (files.isEmpty) throw new IllegalArgumentException("no Parquet files to upload")
     val source   = ParquetSource.read(spark, files)
-    val target   = targetOf(spark, table, source, key)
+    val target   = targetOf(spark, table, source, key, partitioning)
     val inFile   = source.columns.map(column => column.name -> column).toMap
     val required = target.schema.fields.toSeq.filterNot(field => field.nullable || inFile.contains(field.name))
     if (required.nonEmpty)
@@ -51,30 +63,48 @@ object Upload {
 
     val warnings = warningsOf(table, source, target)
     Console.err.println(
-      s"upload ${table.name}: ${counted(files.size, "file")} -> ${if (target.isNew) "new table" else "table"} ${table.qualifiedName}"
+      s"upload ${table.name}: ${counted(files.size, "file")} -> " +
+        target.creation.fold(s"table ${table.qualifiedName}") { partitioning =>
+          s"new table ${table.qualifiedName}, " +
+            partitioning.transform.fold("unpartitioned")(_ => s"one partition per ${partitioning.name} of ${LakeTable.EventTime}")
+        }
     )
     warnings.foreach(Console.err.println)
     if (warnings.nonEmpty && !assumeYes && !Terminal.confirmed("Continue?"))
       throw new IllegalStateException("aborted, nothing uploaded")
 
-    if (target.isNew) table.create(spark, target.schema, target.key)
+    target.creation.foreach(table.create(spark, target.schema, target.key, _))
     write(spark, table, target.key, rows, files.size)
   }
 
-  private def targetOf(spark: SparkSession, table: LakeTable, source: ParquetSource, requestedKey: Seq[String]): Target =
+  private def targetOf(
+      spark: SparkSession,
+      table: LakeTable,
+      source: ParquetSource,
+      requestedKey: Seq[String],
+      requestedPartitioning: Option[Partitioning]
+  ): Target =
     if (table.exists(spark)) {
+      if (requestedPartitioning.nonEmpty)
+        throw new IllegalArgumentException(s"${table.qualifiedName} already exists; --partition only applies to a new table")
       val key = table.key(spark)
       if (requestedKey.nonEmpty && requestedKey.toSet != key.toSet)
         throw new IllegalArgumentException(
           s"${table.qualifiedName} already exists " +
             (if (key.isEmpty) "without a key" else s"with key (${key.mkString(", ")})")
         )
-      Target(spark.table(table.identifier).schema, key, isNew = false)
+      Target(spark.table(table.identifier).schema, key, creation = None)
     } else {
       val unknown = requestedKey.filterNot(source.columns.map(_.name).contains)
       if (unknown.nonEmpty)
         throw new IllegalArgumentException(s"--key columns are not in the files: ${unknown.mkString(", ")}")
-      Target(StructType(source.columns.map(column => StructField(column.name, column.lakeType))), requestedKey, isNew = true)
+      val schema       = StructType(source.columns.map(column => StructField(column.name, column.lakeType)))
+      val hasEventTime = LakeTable.hasEventTime(schema)
+      if (!hasEventTime && requestedPartitioning.exists(_.transform.nonEmpty))
+        throw new IllegalArgumentException(s"--partition needs a timestamp column named ${LakeTable.EventTime}")
+      val partitioning =
+        requestedPartitioning.getOrElse(if (hasEventTime) Partitioning.Day else Partitioning.Unpartitioned)
+      Target(schema, requestedKey, creation = Some(partitioning))
     }
 
   private def warningsOf(table: LakeTable, source: ParquetSource, target: Target): Seq[String] = {

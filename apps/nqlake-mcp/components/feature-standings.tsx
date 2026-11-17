@@ -14,7 +14,7 @@ import {
   TooltipTrigger,
   trendOf,
 } from "@nowquant/nqui";
-import type { FeatureSeries, FeatureStats, StatsReport } from "@/lib/features";
+import type { Comparison, FeatureSeries, FeatureStats, StatsReport } from "@/lib/features";
 import { decimalsFor, scaled, signed } from "@/lib/format";
 import { featureKey, useJsonList } from "@/lib/use-json";
 
@@ -28,12 +28,26 @@ const TREND_BARS = 120;
 const TREND_TEXT = { up: "text-up-text", down: "text-down-text", flat: "text-muted" } as const;
 const NO_STANDINGS: Standing[] = [];
 
-type Standing = FeatureStats & { key: string; change: number | null; decimals: number; trend: number[] };
+type Standing = FeatureStats & {
+  key: string;
+  change: number | null;
+  decimals: number;
+  trend: number[];
+  peers: number | null;
+};
 
-function standingsOf(reports: StatsReport[], recent: FeatureSeries[]): Standing[] {
+function standingsOf(symbol: string, reports: StatsReport[], recent: FeatureSeries[], compared: Comparison[]): Standing[] {
   const trends = new Map(
     recent.flatMap(({ table, series }) =>
       series.map(({ feature, points }) => [featureKey(table, feature), points.map((point) => point[1])]),
+    ),
+  );
+  const peers = new Map(
+    compared.flatMap(({ table, symbols }) =>
+      Object.entries(symbols.find((entry) => entry.symbol === symbol)?.features ?? {}).map(([feature, standing]) => [
+        featureKey(table, feature),
+        standing[1],
+      ]),
     ),
   );
   return reports.flatMap((report) =>
@@ -46,6 +60,7 @@ function standingsOf(reports: StatsReport[], recent: FeatureSeries[]): Standing[
         change: newest != null && previous != null ? newest - previous : null,
         decimals: decimalsFor(feature.std),
         trend: trends.get(key) ?? [],
+        peers: peers.get(key) ?? null,
       };
     }),
   );
@@ -68,9 +83,10 @@ export function FeatureStandings({
   const selection = `symbol=${encodeURIComponent(symbol)}`;
   const stats = useJsonList<StatsReport>(endpoints.map((endpoint) => `${endpoint}/stats?${selection}&lookback=${lookback}`));
   const recent = useJsonList<FeatureSeries>(endpoints.map((endpoint) => `${endpoint}/series?${selection}&limit=${TREND_BARS}`));
+  const compared = useJsonList<Comparison>(endpoints.map((endpoint) => `${endpoint}/compare?lookback=${lookback}`));
   const standings = useMemo(
-    () => (stats.data ? standingsOf(stats.data, recent.data ?? []) : NO_STANDINGS),
-    [stats.data, recent.data],
+    () => (stats.data ? standingsOf(symbol, stats.data, recent.data ?? [], compared.data ?? []) : NO_STANDINGS),
+    [symbol, stats.data, recent.data, compared.data],
   );
 
   useEffect(() => {
@@ -134,6 +150,18 @@ export function FeatureStandings({
           ),
       },
       {
+        id: "peers",
+        header: "Peer percentile",
+        accessorFn: (row) => row.peers,
+        size: 150,
+        cell: ({ row }) =>
+          row.peers == null ? (
+            "—"
+          ) : (
+            <ProgressBar aria-label="Peer percentile" size="sm" showValue value={row.peers * 100} className="w-28" />
+          ),
+      },
+      {
         id: "zscore",
         header: "Z-score",
         accessorFn: (row) => row.zscore,
@@ -159,7 +187,7 @@ export function FeatureStandings({
     ];
   }, []);
 
-  const error = stats.error ?? recent.error;
+  const error = stats.error ?? recent.error ?? compared.error;
   return (
     <Card>
       {error && <Alert color="warning" title={error} />}

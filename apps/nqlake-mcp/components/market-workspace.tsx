@@ -3,29 +3,25 @@
 import { useMemo, useState } from "react";
 import {
   Alert,
-  Button,
   Card,
   CardBody,
   CardHeader,
   CardTitle,
   EmptyState,
   Link,
-  Menu,
-  MenuItem,
-  MenuSection,
-  MenuTrigger,
   PageContent,
   TimeRangeSelector,
 } from "@nowquant/nqui";
-import { ArrowLeft, CandlestickChart, ChevronDown } from "lucide-react";
+import { ArrowLeft, CandlestickChart } from "lucide-react";
+import { FeatureMenu } from "@/components/feature-menu";
 import { FeatureStandings } from "@/components/feature-standings";
 import { type FeatureLine, MarketChart } from "@/components/market-chart";
 import { SuggestionPanel } from "@/components/suggestion-panel";
-import type { Feature, FeatureTable, SeriesPoint } from "@/lib/features";
+import type { FeatureTable, SeriesPoint } from "@/lib/features";
 import type { MarketSymbol, Ohlcv, OhlcvBar } from "@/lib/ohlcv";
-import { symbolsOf } from "@/lib/market";
+import { type CatalogFeature, featureCatalog, symbolsOf } from "@/lib/market";
 import type { SuggestionView } from "@/lib/suggestions";
-import { featureKey, useFeatureSeries, useHeld, useJson } from "@/lib/use-json";
+import { useFeatureSeries, useHeld, useJson } from "@/lib/use-json";
 
 const RANGES = [
   { id: "1w", label: "1W", days: 7 },
@@ -41,22 +37,14 @@ const NO_BARS: OhlcvBar[] = [];
 const NO_POINTS: SeriesPoint[] = [];
 const NO_FEATURES: CatalogFeature[] = [];
 
-type CatalogFeature = Feature & { table: string; key: string };
-
 const daysOf = (range: string) => RANGES.find((option) => option.id === range)?.days ?? null;
 
 const wider = (range: string, than: string) => (daysOf(range) ?? Infinity) > (daysOf(than) ?? Infinity);
 
 const seconds = (instant: string) => Date.parse(instant) / 1000;
 
-function catalogOf(tables: FeatureTable[], symbol: string): CatalogFeature[] {
-  const covering = tables.filter((table) => table.symbols.some((entry) => entry.symbol === symbol));
-  return covering.flatMap(({ table, groups }) =>
-    groups.flatMap((group) =>
-      group.features.map((feature) => ({ ...feature, table, key: featureKey(table, feature.name) })),
-    ),
-  );
-}
+const catalogOf = (tables: FeatureTable[], symbol: string) =>
+  featureCatalog(tables.filter((table) => table.symbols.some((entry) => entry.symbol === symbol)));
 
 function newestBar(priced: MarketSymbol[], tables: FeatureTable[], symbol: string): number | null {
   const ends = [...priced, ...tables.flatMap((table) => table.symbols)]
@@ -119,19 +107,6 @@ export function MarketWorkspace({ symbol: requested }: { symbol: string }) {
     ohlcv.loading || !suggestionSettled || charted.some((feature) => series.held[feature.key]?.window !== seriesWindow);
 
   const coveringTables = useMemo(() => [...new Set(catalog.map((feature) => feature.table))], [catalog]);
-  const sections = useMemo(
-    () =>
-      coveringTables.flatMap((table) =>
-        [...new Set(catalog.filter((feature) => feature.table === table).map((feature) => feature.group))].map(
-          (group) => ({
-            id: featureKey(table, group),
-            title: coveringTables.length > 1 ? `${table} · ${group}` : group,
-            features: catalog.filter((feature) => feature.table === table && feature.group === group),
-          }),
-        ),
-      ),
-    [coveringTables, catalog],
-  );
   const errors = [...new Set([symbols.error, described.error, ohlcv.error, series.error].filter((error) => error != null))];
 
   const chooseRange = (next: string) => {
@@ -156,30 +131,7 @@ export function MarketWorkspace({ symbol: requested }: { symbol: string }) {
               <CardTitle>{requested}</CardTitle>
               <TimeRangeSelector aria-label="Range" size="sm" options={RANGES} value={range} onChange={chooseRange} />
             </div>
-            <MenuTrigger>
-              <Button variant="outline" size="sm" isDisabled={!catalog.length} endContent={<ChevronDown />}>
-                Features · {chartedKeys.length}
-              </Button>
-              <Menu
-                aria-label="Features"
-                selectionMode="multiple"
-                selectedKeys={chartedKeys}
-                onSelectionChange={(keys) =>
-                  setChosenKeys(keys === "all" ? catalog.map((feature) => feature.key) : [...keys].map(String))
-                }
-                popoverProps={{ placement: "bottom end" }}
-              >
-                {sections.map((section) => (
-                  <MenuSection key={section.id} title={section.title}>
-                    {section.features.map((feature) => (
-                      <MenuItem key={feature.key} id={feature.key}>
-                        {feature.term}
-                      </MenuItem>
-                    ))}
-                  </MenuSection>
-                ))}
-              </Menu>
-            </MenuTrigger>
+            <FeatureMenu catalog={catalog} chosen={chartedKeys} onChange={setChosenKeys} />
           </CardHeader>
           <CardBody>
             {listed && !symbol ? (

@@ -66,7 +66,9 @@ object Upload {
       s"upload ${table.name}: ${counted(files.size, "file")} -> " +
         target.creation.fold(s"table ${table.qualifiedName}") { partitioning =>
           s"new table ${table.qualifiedName}, " +
-            partitioning.transform.fold("unpartitioned")(_ => s"one partition per ${partitioning.name} of ${LakeTable.EventTime}")
+            partitioning.transform.zip(LakeTable.partitionColumn(target.schema)).fold("unpartitioned") { case (_, column) =>
+              s"one partition per ${partitioning.name} of $column"
+            }
         }
     )
     warnings.foreach(Console.err.println)
@@ -98,12 +100,14 @@ object Upload {
       val unknown = requestedKey.filterNot(source.columns.map(_.name).contains)
       if (unknown.nonEmpty)
         throw new IllegalArgumentException(s"--key columns are not in the files: ${unknown.mkString(", ")}")
-      val schema       = StructType(source.columns.map(column => StructField(column.name, column.lakeType)))
-      val hasEventTime = LakeTable.hasEventTime(schema)
-      if (!hasEventTime && requestedPartitioning.exists(_.transform.nonEmpty))
-        throw new IllegalArgumentException(s"--partition needs a timestamp column named ${LakeTable.EventTime}")
+      val schema          = StructType(source.columns.map(column => StructField(column.name, column.lakeType)))
+      val partitionColumn = LakeTable.partitionColumn(schema)
+      if (partitionColumn.isEmpty && requestedPartitioning.exists(_.transform.nonEmpty))
+        throw new IllegalArgumentException(
+          s"--partition needs a timestamp column named ${LakeTable.EventTime} or a DATE column named ${LakeTable.Date}"
+        )
       val partitioning =
-        requestedPartitioning.getOrElse(if (hasEventTime) Partitioning.Day else Partitioning.Unpartitioned)
+        requestedPartitioning.getOrElse(if (partitionColumn.nonEmpty) Partitioning.Day else Partitioning.Unpartitioned)
       Target(schema, requestedKey, creation = Some(partitioning))
     }
 
@@ -143,7 +147,7 @@ object Upload {
           if (keyless > 0)
             throw new IllegalArgumentException(s"$keyless rows have NULL in a key column (${key.mkString(", ")})")
           val distinct = staged.dropDuplicates(key)
-          upsert(table, key, distinct)
+          upsert(spark, table, key, distinct)
           s" distinct=${distinct.count()} table_rows=${spark.table(table.identifier).count()}"
         }
       println(s"upload ${table.name}: files=$fileCount rows=$rowCount$written")
@@ -152,16 +156,22 @@ object Upload {
 
   private def counted(count: Int, noun: String): String = if (count == 1) s"1 $noun" else s"$count ${noun}s"
 
-  private def upsert(table: LakeTable, key: Seq[String], rows: DataFrame): Unit = {
+  private def upsert(spark: SparkSession, table: LakeTable, key: Seq[String], rows: DataFrame): Unit = {
     val target  = (column: String) => col(s"${table.identifier}.${LakeTable.quoted(column)}")
     val landed  = (column: String) => col(s"landed.${LakeTable.quoted(column)}")
     val sameKey = key.map(column => target(column) === landed(column)).reduce(_ && _)
+    val ranged  =
+      if (key.contains(LakeTable.EventTime))
+        (Seq(LakeTable.EventTime) ++ table.partitionSources(spark).filter(_ == LakeTable.Date)).distinct
+      else Seq.empty
     val condition =
-      if (!key.contains(LakeTable.EventTime)) sameKey
+      if (ranged.isEmpty) sameKey
       else {
-        val eventTime = col(LakeTable.EventTime)
-        val window    = rows.agg(min(eventTime), max(eventTime)).head()
-        sameKey && target(LakeTable.EventTime).between(window.get(0), window.get(1))
+        val bounds = ranged.flatMap(column => Seq(min(col(LakeTable.quoted(column))), max(col(LakeTable.quoted(column)))))
+        val window = rows.agg(bounds.head, bounds.tail: _*).head()
+        sameKey && ranged.zipWithIndex.map { case (column, i) =>
+          target(column).between(window.get(2 * i), window.get(2 * i + 1))
+        }.reduce(_ && _)
       }
 
     rows

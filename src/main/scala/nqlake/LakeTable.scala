@@ -5,7 +5,7 @@ import scala.jdk.CollectionConverters._
 import org.apache.iceberg.Table
 import org.apache.iceberg.spark.Spark3Util
 import org.apache.spark.sql.SparkSession
-import org.apache.spark.sql.types.{StructType, TimestampNTZType, TimestampType}
+import org.apache.spark.sql.types.{DateType, StructType, TimestampNTZType, TimestampType}
 
 final case class LakeTable(name: String) {
   val qualifiedName: String = s"${LakeTable.Namespace}.$name"
@@ -17,13 +17,20 @@ final case class LakeTable(name: String) {
 
   def isSorted(spark: SparkSession): Boolean = iceberg(spark).sortOrder().isSorted
 
+  def partitionSources(spark: SparkSession): Seq[String] = {
+    val table = iceberg(spark)
+    table.spec().fields().asScala.toSeq.map(field => table.schema().findColumnName(field.sourceId()))
+  }
+
   def create(spark: SparkSession, schema: StructType, key: Seq[String], partitioning: Partitioning): Unit = {
     val columns = StructType(schema.map(field => field.copy(nullable = field.nullable && !key.contains(field.name))))
     spark.sql(s"CREATE NAMESPACE IF NOT EXISTS ${Lake.Catalog}.${LakeTable.Namespace}")
     spark.sql(s"""
       CREATE TABLE $identifier (${columns.toDDL})
       USING iceberg
-      ${partitioning.transform.fold("")(transform => s"PARTITIONED BY ($transform(${LakeTable.EventTime}))")}
+      ${partitioning.transform.zip(LakeTable.partitionColumn(columns)).fold("") { case (transform, column) =>
+        s"PARTITIONED BY ($transform(${LakeTable.quoted(column)}))"
+      }}
       TBLPROPERTIES (
         'format-version' = '2',
         'write.parquet.compression-codec' = 'zstd'
@@ -41,6 +48,7 @@ final case class LakeTable(name: String) {
 object LakeTable {
   val Namespace = "market"
   val EventTime = "ts"
+  val Date      = "date"
 
   private val ValidName = "[a-z][a-z0-9_]*".r
 
@@ -54,8 +62,10 @@ object LakeTable {
       .toSeq
       .map(row => LakeTable(row.getAs[String]("tableName")))
 
-  def hasEventTime(schema: StructType): Boolean =
-    schema.exists(field => field.name == EventTime && (field.dataType == TimestampType || field.dataType == TimestampNTZType))
+  def partitionColumn(schema: StructType): Option[String] =
+    if (schema.exists(field => field.name == EventTime && (field.dataType == TimestampType || field.dataType == TimestampNTZType)))
+      Some(EventTime)
+    else Option.when(schema.exists(field => field.name == Date && field.dataType == DateType))(Date)
 
   def quoted(column: String): String = s"`${column.replace("`", "``")}`"
 }

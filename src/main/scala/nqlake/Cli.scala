@@ -118,8 +118,8 @@ object Cli {
         Opts
           .option[Partitioning](
             "partition",
-            s"Time span of ${LakeTable.EventTime} that one partition of a new table holds " +
-              s"(default: day, or none without a ${LakeTable.EventTime} timestamp column)",
+            s"Time span that one partition of a new table holds, taken from a timestamp column ${LakeTable.EventTime} " +
+              s"or else a DATE column ${LakeTable.Date} (default: day, or none without either column)",
             short = "p"
           )
           .orNone,

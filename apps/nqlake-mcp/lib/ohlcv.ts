@@ -8,10 +8,12 @@ import {
   featureTableNames,
   from,
   InputError,
-  ISO_SECONDS,
+  isoOf,
   NAMESPACE,
+  NANOSECONDS_PER_SECOND,
   oneRowPerTime,
   qualified,
+  secondsOf,
   symbol,
   type SymbolCoverage,
 } from "./features";
@@ -20,14 +22,13 @@ import { CATALOG, query } from "./lake";
 const OHLCV_TABLE = "us_equity_ohlcv";
 const PRICES = ["open", "high", "low", "close"] as const;
 const BAR_SECONDS_BY_RTYPE = { 32: 1, 33: 60, 34: 3600, 35: 86_400 };
-const NANOSECONDS_PER_SECOND = 1_000_000_000;
 const PRICE_UNITS_PER_ONE = 1_000_000_000;
 const UNDEFINED_PRICE = "9223372036854775807";
-const BAR_SECONDS = `CASE rtype ${Object.entries(BAR_SECONDS_BY_RTYPE)
-  .map(([rtype, seconds]) => `WHEN ${rtype} THEN ${seconds}`)
+const BAR_CLOSE = `ts_event::BIGINT + CASE rtype ${Object.entries(BAR_SECONDS_BY_RTYPE)
+  .map(([rtype, seconds]) => `WHEN ${rtype} THEN ${seconds * NANOSECONDS_PER_SECOND}`)
   .join(" ")} END`;
 const BARS_AT_CLOSE = `(
-  SELECT symbol, to_timestamp(ts_event // ${NANOSECONDS_PER_SECOND} + ${BAR_SECONDS}) AS ts,
+  SELECT symbol, ${BAR_CLOSE} AS ts, make_timestamp_ns(${BAR_CLOSE})::DATE AS date,
          ${PRICES.map((price) => `nullif(${price}, ${UNDEFINED_PRICE}) / ${PRICE_UNITS_PER_ONE} AS ${price}`).join(", ")},
          volume
   FROM ${qualified(OHLCV_TABLE)}
@@ -43,6 +44,7 @@ export type OhlcvBar = [
   volume: number | null,
 ];
 export type Ohlcv = { symbol: string; as_of: string | null; bars: OhlcvBar[] };
+export type CloseTrail = { symbol: string; as_of: string; closes: number[] };
 export type TableCoverage = Omit<SymbolCoverage, "symbol"> & { table: string };
 export type MarketSymbol = SymbolCoverage & { tables: TableCoverage[] };
 
@@ -55,6 +57,10 @@ export const candlesShape = {
   ...ohlcvShape,
   limit: z.coerce.number().int().min(1).max(200_000).default(200_000).describe("Number of newest bars to return"),
   from,
+};
+
+export const closesShape = {
+  limit: z.coerce.number().int().min(2).max(1000).default(240).describe("Number of newest closes of each symbol"),
 };
 
 type StoredBar = { time: number; ts: string; open: number; high: number; low: number; close: number; volume: number | null };
@@ -72,7 +78,7 @@ export async function ohlcvBars(selection: BarWindow & { limit: number }): Promi
   await requireOhlcvTable();
   const { where, values } = barWindow(selection);
   const newestFirst = await query<StoredBar>(
-    `SELECT epoch(source.ts::TIMESTAMPTZ)::DOUBLE AS time, strftime(source.ts, ${ISO_SECONDS}) AS ts,
+    `SELECT ${secondsOf("source.ts")} AS time, ${isoOf("source.ts")} AS ts,
             ${PRICES.map((price) => `source.${price}`).join(", ")}, source.volume::DOUBLE AS volume
      FROM ${BARS_AT_CLOSE} AS source
      WHERE ${where} AND ${PRICES.map((price) => `source.${price} IS NOT NULL`).join(" AND ")}
@@ -98,4 +104,21 @@ export async function marketSymbols(): Promise<MarketSymbol[]> {
         .map(({ rows, first, last }) => ({ table, rows, first, last })),
     ),
   }));
+}
+
+export async function recentCloses({ limit }: { limit: number }): Promise<CloseTrail[]> {
+  await requireOhlcvTable();
+  return query<CloseTrail>(
+    `SELECT symbol, ${isoOf("max(ts)")} AS as_of, list(close ORDER BY ts) AS closes
+     FROM (
+       SELECT symbol, ts, any_value(close) AS close
+       FROM ${BARS_AT_CLOSE} AS source
+       WHERE close IS NOT NULL
+       GROUP BY symbol, ts
+       QUALIFY row_number() OVER (PARTITION BY symbol ORDER BY ts DESC) <= $limit
+     )
+     GROUP BY symbol
+     ORDER BY symbol`,
+    { limit },
+  );
 }

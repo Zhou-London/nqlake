@@ -1,9 +1,12 @@
 # NQLake MCP
 
 NQLake MCP shows the OHLCV bars and the feature tables of the lake to people
-and to agents. An agent reads them through MCP tools and writes one suggestion
-per symbol. The UI lists the symbols, each with a thumbnail of its closes, and
-shows the bars, the features and the suggestion of the symbol you open.
+and to agents. A feature table covers many symbols, about 100 US equities and
+ETFs. An agent compares the symbols through MCP tools and writes one suggestion
+per symbol it picks. The UI shows each active symbol as a thumbnail: its closes,
+its changes, its chosen features with their peer percentiles, and its
+suggestion. You can search and sort the thumbnails, and open one for the bars,
+the features and the suggestion of that symbol.
 
 ## Parts
 
@@ -30,7 +33,7 @@ cp .env.example .env
 npm run dev
 ```
 
-The app listens on `http://127.0.0.1:40021`.
+The app listens on port 40021 of every network interface, so other devices on the LAN can open `http://<host IP>:40021`. The Feature API and the read tools have no login; only `write_suggestions` needs the token.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -50,8 +53,10 @@ Feature tables stamp their rows the same way, so a bar and the features
 computed from it share one time.
 
 A feature table is a table in namespace `market` whose name ends in `_feat`.
-It has a `symbol` column and a `ts` timestamp column. A feature is a numeric
-column named `<group>.<feature>`, for example `ta_ohlcv.rsi`.
+It has a `symbol` column and a `ts` column. `ts` is a 64-bit integer: the bar
+close in nanoseconds since the Unix epoch, UTC. The `date` column holds the UTC
+day of `ts`. The table is partitioned by the month of `date`. A feature is a
+numeric column named `<group>.<feature>`, for example `ta_ohlcv.rsi`.
 
 `lib/glossary.ts` holds the term and the description of each feature. The term
 is the name of the feature in plain words, for example `Relative strength
@@ -63,23 +68,36 @@ and the descriptions to the agent.
 | Request | Returns |
 | --- | --- |
 | `GET /api/symbols` | Every symbol of the OHLCV table, with the feature tables that cover it |
+| `GET /api/closes` | The newest closes of every symbol, oldest first |
 | `GET /api/ohlcv?symbol=S` | The bars of one symbol as `[unix seconds of the bar close, open, high, low, close, volume]`, oldest first |
 | `GET /api/features` | Every feature table: groups, features, symbols |
 | `GET /api/features/<table>` | One feature table |
+| `GET /api/features/<table>/compare` | Every symbol on its newest bar, placed among the other symbols and inside its own history |
 | `GET /api/features/<table>/stats?symbol=S` | Statistics of each feature over the newest bars |
 | `GET /api/features/<table>/latest?symbol=S` | The newest bars, newest first |
 | `GET /api/features/<table>/series?symbol=S` | Each feature as a list of `[unix seconds, value]`, oldest first |
 | `GET /api/suggestions` | The current suggestion of each symbol |
 
-`stats`, `latest` and `series` take `group`, `features` (comma-separated), and
-`as_of` (a UTC time; bars after it are left out). `ohlcv` takes `as_of` too.
+`compare`, `stats`, `latest` and `series` take `group`, `features`
+(comma-separated), and `as_of` (a UTC time; bars after it are left out).
+`ohlcv` takes `as_of` too.
 
 | Request | Other parameters |
 | --- | --- |
 | `stats` | `lookback`: 30 to 50,000 bars, default 2,000 |
+| `compare` | `lookback` as in `stats`. `symbols` (comma-separated). `sort_by`: a feature column. `order`: `desc` (default) or `asc`. `limit`: 1 to 200 symbols, default 200. |
+| `closes` | `limit`: 2 to 1,000 closes per symbol, default 240 |
 | `latest` | `limit`: 1 to 5,000 newest bars, default 500 |
 | `series`, `ohlcv` | `limit`: 1 to 200,000 newest bars, default 200,000. `from`: a UTC time; bars before it are left out. |
 | `suggestions` | `symbol`: return only the suggestion of this symbol |
+
+`compare` gives each feature of each symbol as `[value, peer percentile,
+percentile, z-score]`. The peer percentile is the share of compared symbols
+whose value is at or below this one. The percentile and the z-score place the
+value inside the symbol's own newest `lookback` bars. Each symbol is read at its
+own newest bar, and carries that time as `as_of`. A symbol without a bar in the
+7 days before the newest bar of the table is inactive: `compare` lists it in
+`inactive` and leaves it out, and the UI hides its thumbnail.
 
 `ohlcv` leaves out a bar when one of its prices is missing. `series` leaves
 out a point when the feature has no value at that bar. When a table holds
@@ -92,15 +110,16 @@ several rows for one symbol and time, `ohlcv` and `series` return one of them. T
 | --- | --- |
 | `list_feature_tables` | Lists the feature tables |
 | `describe_feature_table` | Describes one feature table |
+| `compare_symbols` | Places every symbol among the others and inside its own history, in one call |
 | `get_feature_stats` | Places the current value of each feature inside its history |
 | `get_latest_features` | Returns the newest bars of a feature table |
 | `get_ohlcv` | Returns the newest OHLCV bars of one symbol |
 | `read_suggestions` | Returns the current suggestions, or the suggestion of one symbol |
-| `write_suggestions` | Stores one suggestion per symbol |
+| `write_suggestions` | Stores one suggestion per symbol, up to 200 symbols per call |
 
 `write_suggestions` needs the header `Authorization: Bearer <token>`, where
 the token equals `NQLAKE_MCP_WRITE_TOKEN`. Each suggestion names the feature
-tables it relies on and the `as_of` time each read returned. The server
+tables it relies on and the `as_of` time each read returned for its symbol. The server
 rejects an `as_of` later than the newest bar of the table. A suggestion can
 list the features it cites in `features`. Each one must be a feature of a
 table in its sources. The UI marks a suggestion when its table has newer bars.

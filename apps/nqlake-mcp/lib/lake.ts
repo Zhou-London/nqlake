@@ -27,17 +27,30 @@ async function attachLake(): Promise<DuckDBInstance> {
   }
 }
 
-export async function query<Row>(sql: string, values: Record<string, DuckDBValue> = {}): Promise<Row[]> {
+function attached(): Promise<DuckDBInstance> {
   store.nqlakeInstance ??= attachLake();
-  const instance = await store.nqlakeInstance.catch((error) => {
+  return store.nqlakeInstance.catch((error) => {
     store.nqlakeInstance = undefined;
     throw error;
   });
+}
+
+async function run<Row>(instance: DuckDBInstance, sql: string, values: Record<string, DuckDBValue>): Promise<Row[]> {
   const connection = await instance.connect();
   try {
     const reader = await connection.runAndReadAll(sql, values);
     return reader.getRowObjectsJson() as Row[];
   } finally {
     connection.closeSync();
+  }
+}
+
+export async function query<Row>(sql: string, values: Record<string, DuckDBValue> = {}): Promise<Row[]> {
+  const instance = await attached();
+  try {
+    return await run<Row>(instance, sql, values);
+  } catch {
+    store.nqlakeInstance = undefined;
+    return run<Row>(await attached(), sql, values);
   }
 }

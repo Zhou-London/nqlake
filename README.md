@@ -97,8 +97,9 @@ nqlake upload trades.parquet --table trades --key symbol,ts,order_id
 - Without files, `upload` reads the landing bucket. The folder `s3://landing/<table>/` feeds the table `<table>`. `upload` deletes the files it loaded after the write succeeds.
 - With files, `--table` is required. A file can be a local path, an `s3a://` URL, or a folder of Parquet files. `upload` keeps these files.
 - `upload` creates the table when it does not exist. `--key` sets the primary key of the new table.
-- A new table with a `ts` timestamp column is split by `day(ts)`. `--partition day|month|year|none` sets another split. Use `month` or `none` for hourly or daily bars: `day` gives one small file per day.
+- A new table is split by `day` of its partition column. The partition column is `ts` when `ts` is a timestamp, or else `date` when `date` is a DATE. A table with neither column has no partitions. `--partition day|month|year|none` sets another split. Use `month` or `none` for hourly or daily bars: `day` gives one small file per day.
 - A table with a key gets one row per key: `upload` removes duplicates and MERGEs. Running the same upload again gives the same result. Key columns reject NULL.
+- A key with `ts` limits the MERGE to the `ts` range of the upload. A table split by `date` also limits the MERGE to the `date` range. `date` must be the day of `ts` in such a table.
 - A table without a key gets every row appended. Duplicates stay.
 - All files of one upload must have the same columns and types.
 
@@ -106,7 +107,8 @@ nqlake upload trades.parquet --table trades --key symbol,ts,order_id
 
 | In the file | In the table | Notes |
 | --- | --- | --- |
-| `timestamp[ns]` | `timestamp` (microseconds) | Nanoseconds are truncated |
+| `timestamp[ns, UTC]` | `timestamp` (microseconds) | Nanoseconds are truncated |
+| `timestamp[ns]` | `timestamp_ntz` (microseconds) | Nanoseconds are truncated |
 | INT96 timestamp | `timestamp` (microseconds) | Nanoseconds are truncated |
 | `uint8`, `uint16`, `int8`, `int16` | `int` |  |
 | `uint32` | `bigint` |  |

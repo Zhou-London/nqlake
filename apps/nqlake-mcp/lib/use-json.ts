@@ -6,6 +6,7 @@ import type { FeatureSeries, SeriesPoint } from "./features";
 export type Loaded<Data> = { data: Data | null; error: string | null; loading: boolean; refresh: () => void };
 
 const URL_SEPARATOR = "\n";
+const lastLoaded = new Map<string, unknown[]>();
 
 async function fetchJson<Data>(url: string, signal: AbortSignal): Promise<Data> {
   const response = await fetch(url, { signal });
@@ -16,11 +17,11 @@ async function fetchJson<Data>(url: string, signal: AbortSignal): Promise<Data> 
 
 export function useJsonList<Data>(urls: string[]): Loaded<Data[]> {
   const key = urls.length ? urls.join(URL_SEPARATOR) : null;
-  const [state, setState] = useState<{ key: string | null; data: Data[] | null; error: string | null }>({
-    key: null,
-    data: null,
+  const [state, setState] = useState<{ key: string | null; data: Data[] | null; error: string | null }>(() => ({
+    key: key && lastLoaded.has(key) ? key : null,
+    data: key ? ((lastLoaded.get(key) as Data[] | undefined) ?? null) : null,
     error: null,
-  });
+  }));
   const [attempt, setAttempt] = useState(0);
   const refresh = useCallback(() => setAttempt((count) => count + 1), []);
 
@@ -28,7 +29,10 @@ export function useJsonList<Data>(urls: string[]): Loaded<Data[]> {
     if (!key) return;
     const request = new AbortController();
     Promise.all(key.split(URL_SEPARATOR).map((url) => fetchJson<Data>(url, request.signal)))
-      .then((data) => setState({ key, data, error: null }))
+      .then((data) => {
+        lastLoaded.set(key, data);
+        setState({ key, data, error: null });
+      })
       .catch((error: Error) => {
         if (!request.signal.aborted)
           setState((previous) => ({ key, data: previous.key === key ? previous.data : null, error: error.message }));

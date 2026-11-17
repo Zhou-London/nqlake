@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
+  compareShape,
+  compareSymbols,
   describeFeatureTable,
   featureStats,
   InputError,
@@ -10,18 +12,23 @@ import {
   statsShape,
   tableShape,
 } from "./features";
+import { INACTIVE_AFTER_DAYS } from "./limits";
 import { ohlcvBars, ohlcvShape } from "./ohlcv";
 import { readShape, readSuggestions, writeShape, writeSuggestions } from "./suggestions";
 
 const INSTRUCTIONS = `NQLake MCP serves OHLCV bars and feature tables from the NQLake lakehouse and stores trading suggestions.
+A feature table covers many symbols, about 100 US equities and ETFs.
 
 Workflow for writing suggestions:
 1. list_feature_tables shows every feature table, its feature groups and the symbols it covers.
-2. For each table and each feature group, call get_feature_stats for the symbol. The report places the current value
-   of each feature inside its own history (percentile, z-score, quantiles, newest values).
-3. Call get_latest_features only when the order of the newest bars matters. Call get_ohlcv for the prices behind them.
-4. Call write_suggestions once, with one suggestion per symbol. Pass every feature table you relied on in sources,
-   with the as_of value its tool returned, and the feature columns the reasoning cites in features.
+2. For each table, call compare_symbols. It returns every active symbol at once and places each feature value
+   among the other symbols (peer percentile) and inside the symbol's own history (percentile, z-score).
+   Use sort_by and limit to read the extremes of one feature. Pick the symbols whose features stand out.
+3. For each picked symbol, call get_feature_stats for the detail of its own history. Call get_latest_features
+   only when the order of the newest bars matters. Call get_ohlcv for the prices behind them.
+4. Call write_suggestions once, with one suggestion per picked symbol. Pass every feature table you relied on in
+   sources, with the as_of value the tool returned for that symbol, and the feature columns the reasoning cites in
+   features. Symbols end their bars at different times: take as_of from the symbol's own entry, not from the table.
 
 A symbol keeps one suggestion: writing replaces the earlier one and no history is kept.
 Every tool except write_suggestions is read-only. Feature columns are named <group>.<feature>.
@@ -70,6 +77,22 @@ export function featureServer(access: Access): McpServer {
       annotations: READ_ONLY,
     },
     ({ table }) => attempt(() => describeFeatureTable(table)),
+  );
+
+  server.registerTool(
+    "compare_symbols",
+    {
+      title: "Compare symbols",
+      description:
+        "Compares the symbols of one feature table on their newest bars. Each feature of each symbol is " +
+        "[value, peer percentile, percentile in the symbol's own history, z-score in the symbol's own history]. " +
+        "The peer percentile is the share of compared symbols whose value is at or below this one. " +
+        "Each symbol carries as_of, the time of its newest bar read. Symbols without a bar in the " +
+        `${INACTIVE_AFTER_DAYS} days before the newest bar of the table are listed in inactive and left out.`,
+      inputSchema: compareShape,
+      annotations: READ_ONLY,
+    },
+    (input) => attempt(() => compareSymbols(input)),
   );
 
   server.registerTool(

@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { config } from "./config";
 import { coverageOf, featuresOf, featureTableNames, InputError, type SymbolCoverage } from "./features";
+import { MAX_SYMBOLS } from "./limits";
 
 const source = z.object({
   table: z.string().min(1).describe("Feature table that was read"),
@@ -30,7 +31,7 @@ export const readShape = {
 
 export const writeShape = {
   model: z.string().min(1).max(120).describe("Name of the model that wrote the suggestions"),
-  suggestions: z.array(suggestion).min(1).max(100).describe("One suggestion per symbol; replaces that symbol's suggestion"),
+  suggestions: z.array(suggestion).min(1).max(MAX_SYMBOLS).describe("One suggestion per symbol; replaces that symbol's suggestion"),
 };
 
 export type Source = z.infer<typeof source>;

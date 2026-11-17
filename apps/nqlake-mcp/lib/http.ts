@@ -13,8 +13,13 @@ export async function respond(run: () => Promise<unknown>): Promise<Response> {
 }
 
 export function searchInput(request: Request, table?: string): Record<string, unknown> {
-  const { features, ...search } = Object.fromEntries(new URL(request.url).searchParams);
-  return { ...search, ...(table ? { table } : {}), ...(features ? { features: features.split(",") } : {}) };
+  const { features, symbols, ...search } = Object.fromEntries(new URL(request.url).searchParams);
+  return {
+    ...search,
+    ...(table ? { table } : {}),
+    ...(features ? { features: features.split(",") } : {}),
+    ...(symbols ? { symbols: symbols.split(",") } : {}),
+  };
 }
 
 export type TableRoute = { params: Promise<{ table: string }> };

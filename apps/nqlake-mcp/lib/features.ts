@@ -1,17 +1,22 @@
+import { listValue } from "@duckdb/node-api";
 import { z } from "zod";
 import { describeFeature, featureTerm } from "./glossary";
 import { CATALOG, identifier, query } from "./lake";
+import { INACTIVE_AFTER_DAYS, MAX_SYMBOLS } from "./limits";
 
 export class InputError extends Error {}
 
 export const NAMESPACE = "market";
 const FEATURE_TABLE_SUFFIX = "_feat";
 const GROUP_SEPARATOR = ".";
-export const ISO_SECONDS = "'%Y-%m-%dT%H:%M:%SZ'";
+const ISO_SECONDS = "'%Y-%m-%dT%H:%M:%SZ'";
 const NUMERIC_TYPE = /^(DOUBLE|FLOAT|DECIMAL|U?(TINY|SMALL|BIG|HUGE)?INT)/;
 const QUANTILES = [0.05, 0.25, 0.5, 0.75, 0.95];
 const RECENT_VALUES = 8;
 const SIGNIFICANT_DIGITS = 6;
+const COMPARED_DIGITS = 4;
+const SECONDS_PER_DAY = 86_400;
+export const NANOSECONDS_PER_SECOND = 1_000_000_000;
 
 export type Feature = { name: string; term: string; group: string; type: string; description: string | null };
 export type FeatureGroup = { group: string; features: Feature[] };
@@ -51,6 +56,21 @@ export type StatsReport = {
   as_of: string | null;
   bars: number;
   features: FeatureStats[];
+};
+export type Standing = [
+  value: number | null,
+  peerPercentile: number | null,
+  percentile: number | null,
+  zscore: number | null,
+];
+export type SymbolStandings = { symbol: string; as_of: string; features: Record<string, Standing> };
+export type Comparison = {
+  table: string;
+  as_of: string | null;
+  lookback: number;
+  features: { feature: string; term: string }[];
+  symbols: SymbolStandings[];
+  inactive: { symbol: string; last: string }[];
 };
 
 const table = z.string().min(1).describe("Feature table name, as returned by list_feature_tables");
@@ -93,25 +113,52 @@ export const seriesShape = {
   from,
   as_of: asOf,
 };
+const lookback = z.coerce.number().int().min(30).max(50_000).default(2000);
+
 export const statsShape = {
   table,
   symbol,
   group,
   features,
-  lookback: z.coerce
+  lookback: lookback.describe("Number of newest bars the statistics cover"),
+  as_of: asOf,
+};
+export const compareShape = {
+  table,
+  group,
+  features,
+  symbols: z
+    .array(z.string().min(1))
+    .min(1)
+    .max(MAX_SYMBOLS)
+    .optional()
+    .describe("Symbols to compare; omit for every symbol of the table"),
+  sort_by: z.string().min(1).optional().describe("Feature column to sort by; omit to sort by symbol"),
+  order: z.enum(["desc", "asc"]).default("desc").describe("Sort order of sort_by"),
+  limit: z.coerce
     .number()
     .int()
-    .min(30)
-    .max(50_000)
-    .default(2000)
-    .describe("Number of newest bars the statistics cover"),
+    .min(1)
+    .max(MAX_SYMBOLS)
+    .default(MAX_SYMBOLS)
+    .describe("Number of symbols to return, after sorting"),
+  lookback: lookback.describe("Number of newest bars of each symbol that its own percentile and z-score cover"),
   as_of: asOf,
 };
 
 export type BarWindow = { symbol: string; from?: string; as_of?: string };
-type Selection = BarWindow & { table: string; group?: string; features?: string[] };
+type Columns = { table: string; group?: string; features?: string[] };
+type Selection = BarWindow & Columns;
+type CompareInput = z.infer<z.ZodObject<typeof compareShape>>;
 
 export const qualified = (name: string) => `${CATALOG}.${NAMESPACE}.${identifier(name)}`;
+
+export const isoOf = (nanoseconds: string) => `strftime(make_timestamp_ns(${nanoseconds}), ${ISO_SECONDS})`;
+export const secondsOf = (nanoseconds: string) => `(${nanoseconds} / ${NANOSECONDS_PER_SECOND})::DOUBLE`;
+const nanosecondsOf = (parameter: string) => `epoch_ns($${parameter}::TIMESTAMPTZ)`;
+const dayOf = (parameter: string) => `make_timestamp_ns(${nanosecondsOf(parameter)})::DATE`;
+const atOrBefore = (parameter: string) =>
+  ` AND source.ts <= ${nanosecondsOf(parameter)} AND source.date <= ${dayOf(parameter)}`;
 
 const finiteValue = (column: string) => {
   const value = `source.${identifier(column)}::DOUBLE`;
@@ -120,8 +167,11 @@ const finiteValue = (column: string) => {
 
 const finite = (column: string) => `${finiteValue(column)} AS ${identifier(column)}`;
 
-const rounded = (value: number | null | undefined) =>
-  value == null || !Number.isFinite(value) ? null : Number(value.toPrecision(SIGNIFICANT_DIGITS));
+const rounded = (value: number | null | undefined, digits = SIGNIFICANT_DIGITS) =>
+  value == null || !Number.isFinite(value) ? null : Number(value.toPrecision(digits));
+
+const zscoreOf = (current: number | null, mean: number | null, std: number | null) =>
+  current != null && mean != null && std ? (current - mean) / std : null;
 
 export async function featureTableNames(): Promise<string[]> {
   const rows = await query<{ table_name: string }>(
@@ -150,7 +200,7 @@ export async function featuresOf(name: string): Promise<Feature[]> {
 export async function coverageIn(relation: string): Promise<SymbolCoverage[]> {
   return query<SymbolCoverage>(
     `SELECT symbol, count(*)::INTEGER AS rows,
-            strftime(min(ts), ${ISO_SECONDS}) AS first, strftime(max(ts), ${ISO_SECONDS}) AS last
+            ${isoOf("min(ts)")} AS first, ${isoOf("max(ts)")} AS last
      FROM ${relation} GROUP BY symbol ORDER BY symbol`,
   );
 }
@@ -173,7 +223,7 @@ export async function listFeatureTables(): Promise<FeatureTable[]> {
   return Promise.all((await featureTableNames()).map(describeFeatureTable));
 }
 
-async function selected(selection: Selection): Promise<Feature[]> {
+async function selected(selection: Columns): Promise<Feature[]> {
   const all = await featuresOf(selection.table);
   if (selection.features) {
     const unknown = selection.features.filter((name) => !all.some((feature) => feature.name === name));
@@ -189,8 +239,8 @@ async function selected(selection: Selection): Promise<Feature[]> {
 export const barWindow = ({ symbol, from, as_of }: BarWindow) => ({
   where:
     "source.symbol = $symbol" +
-    (from ? " AND source.ts >= $from::TIMESTAMPTZ" : "") +
-    (as_of ? " AND source.ts <= $as_of::TIMESTAMPTZ" : ""),
+    (from ? ` AND source.ts >= ${nanosecondsOf("from")} AND source.date >= ${dayOf("from")}` : "") +
+    (as_of ? atOrBefore("as_of") : ""),
   values: { symbol, ...(from ? { from } : {}), ...(as_of ? { as_of } : {}) },
 });
 
@@ -198,7 +248,7 @@ export async function latestFeatures(selection: Selection & { limit: number }): 
   const columns = await selected(selection);
   const { where, values } = barWindow(selection);
   const rows = await query<FeatureRow>(
-    `SELECT strftime(source.ts, ${ISO_SECONDS}) AS ts, ${columns.map((feature) => finite(feature.name)).join(", ")}
+    `SELECT ${isoOf("source.ts")} AS ts, ${columns.map((feature) => finite(feature.name)).join(", ")}
      FROM ${qualified(selection.table)} AS source
      WHERE ${where}
      ORDER BY source.ts DESC LIMIT $limit`,
@@ -211,7 +261,7 @@ export async function featureSeries(selection: Selection & { limit: number }): P
   const columns = await selected(selection);
   const { where, values } = barWindow(selection);
   const newestFirst = await query<{ time: number; ts: string } & Record<string, number | null>>(
-    `SELECT epoch(source.ts::TIMESTAMPTZ)::DOUBLE AS time, strftime(source.ts, ${ISO_SECONDS}) AS ts,
+    `SELECT ${secondsOf("source.ts")} AS time, ${isoOf("source.ts")} AS ts,
             ${columns.map((feature) => finite(feature.name)).join(", ")}
      FROM ${qualified(selection.table)} AS source
      WHERE ${where}
@@ -254,7 +304,7 @@ export async function featureStats(selection: Selection & { lookback: number }):
   const perFeature = columns.map((feature, position) => {
     const value = identifier(feature.name);
     return `SELECT ${position} AS position,
-              strftime(max(ts), ${ISO_SECONDS}) AS as_of, count(*)::INTEGER AS bars,
+              ${isoOf("max(ts)")} AS as_of, count(*)::INTEGER AS bars,
               max(CASE WHEN recency = 1 THEN ${value} END) AS current,
               count(${value})::INTEGER AS observations,
               avg(${value}) AS mean, stddev_samp(${value}) AS std, min(${value}) AS min, max(${value}) AS max,
@@ -284,7 +334,7 @@ export async function featureStats(selection: Selection & { lookback: number }):
     features: rows.map((row) => {
       const feature = columns[row.position];
       const [p05, p25, median, p75, p95] = row.quantiles ?? [];
-      const zscore = row.current != null && row.mean != null && row.std ? (row.current - row.mean) / row.std : null;
+      const zscore = zscoreOf(row.current, row.mean, row.std);
       return {
         feature: feature.name,
         term: feature.term,
@@ -302,8 +352,109 @@ export async function featureStats(selection: Selection & { lookback: number }):
         p95: rounded(p95),
         max: rounded(row.max),
         observations: row.observations,
-        recent: (row.recent ?? []).map(rounded),
+        recent: (row.recent ?? []).map((value) => rounded(value)),
       };
     }),
+  };
+}
+
+type ComparedRow = { symbol: string; as_of: string; time: number } & Record<string, number | null>;
+
+const shareAtOrBelow = (sorted: number[], value: number) => {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (sorted[middle] <= value) low = middle + 1;
+    else high = middle;
+  }
+  return low / sorted.length;
+};
+
+export async function compareSymbols(selection: CompareInput): Promise<Comparison> {
+  const columns = await selected(selection);
+  const sortColumn = selection.sort_by == null ? null : columns.findIndex((feature) => feature.name === selection.sort_by);
+  if (sortColumn === -1) throw new InputError(`sort_by is not among the compared features: ${selection.sort_by}`);
+
+  const rows = await query<ComparedRow>(
+    `WITH recent AS (
+       SELECT source.symbol AS symbol, source.ts AS ts,
+              row_number() OVER (PARTITION BY source.symbol ORDER BY source.ts DESC) AS recency,
+              ${columns.map((feature, position) => `${finiteValue(feature.name)} AS f${position}`).join(", ")}
+       FROM ${qualified(selection.table)} AS source
+       WHERE true
+         ${selection.symbols ? "AND list_contains($symbols, source.symbol)" : ""}
+         ${selection.as_of ? atOrBefore("as_of") : ""}
+       QUALIFY recency <= $lookback
+     ),
+     newest AS (SELECT * FROM recent WHERE recency = 1)
+     SELECT recent.symbol AS symbol,
+            ${isoOf("any_value(newest.ts)")} AS as_of,
+            ${secondsOf("any_value(newest.ts)")} AS time,
+            ${columns
+              .map(
+                (_, position) =>
+                  `any_value(newest.f${position}) AS current${position},
+                   avg((recent.f${position} <= newest.f${position})::INTEGER) AS percentile${position},
+                   avg(recent.f${position}) AS mean${position},
+                   stddev_samp(recent.f${position}) AS std${position}`,
+              )
+              .join(",\n")}
+     FROM recent JOIN newest ON recent.symbol = newest.symbol
+     GROUP BY recent.symbol
+     ORDER BY recent.symbol`,
+    {
+      lookback: selection.lookback,
+      ...(selection.symbols ? { symbols: listValue(selection.symbols) } : {}),
+      ...(selection.as_of ? { as_of: selection.as_of } : {}),
+    },
+  );
+
+  const missing = (selection.symbols ?? []).filter((name) => !rows.some((row) => row.symbol === name));
+  if (missing.length) throw new InputError(`${selection.table} has no bars for: ${[...new Set(missing)].join(", ")}`);
+
+  const newest = Math.max(...rows.map((row) => row.time));
+  const isActive = (row: ComparedRow) => newest - row.time <= INACTIVE_AFTER_DAYS * SECONDS_PER_DAY;
+  const active = rows.filter(isActive);
+  const peers = columns.map((_, position) =>
+    active
+      .map((row) => row[`current${position}`])
+      .filter((value) => value != null)
+      .sort((a, b) => a - b),
+  );
+  const compared = active.map((row) => ({
+    symbol: row.symbol,
+    as_of: row.as_of,
+    standings: columns.map((_, position): Standing => {
+      const current = row[`current${position}`];
+      return [
+        rounded(current, COMPARED_DIGITS),
+        current == null ? null : rounded(shareAtOrBelow(peers[position], current), COMPARED_DIGITS),
+        rounded(row[`percentile${position}`], COMPARED_DIGITS),
+        rounded(zscoreOf(current, row[`mean${position}`], row[`std${position}`]), COMPARED_DIGITS),
+      ];
+    }),
+  }));
+  if (sortColumn != null) {
+    const direction = selection.order === "asc" ? 1 : -1;
+    compared.sort((left, right) => {
+      const [a] = left.standings[sortColumn];
+      const [b] = right.standings[sortColumn];
+      if (a == null || b == null) return (a == null ? 1 : 0) - (b == null ? 1 : 0);
+      return (a - b) * direction;
+    });
+  }
+
+  return {
+    table: selection.table,
+    as_of: rows.find((row) => row.time === newest)?.as_of ?? null,
+    lookback: selection.lookback,
+    features: columns.map((feature) => ({ feature: feature.name, term: feature.term })),
+    symbols: compared.slice(0, selection.limit).map(({ symbol, as_of, standings }) => ({
+      symbol,
+      as_of,
+      features: Object.fromEntries(columns.map((feature, position) => [feature.name, standings[position]])),
+    })),
+    inactive: rows.filter((row) => !isActive(row)).map((row) => ({ symbol: row.symbol, last: row.as_of })),
   };
 }

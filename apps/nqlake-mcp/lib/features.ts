@@ -18,7 +18,18 @@ const COMPARED_DIGITS = 4;
 const SECONDS_PER_DAY = 86_400;
 export const NANOSECONDS_PER_SECOND = 1_000_000_000;
 
-export type Feature = { name: string; term: string; group: string; type: string; description: string | null };
+const PEER_SUFFIXES = { rank: "_rank", zscore: "_z" } as const;
+
+export type Peers = { rank: string | null; zscore: string | null };
+export type Feature = {
+  name: string;
+  term: string;
+  group: string;
+  type: string;
+  description: string | null;
+  peers: Peers | null;
+};
+type Column = Feature & { peerOf: string | null };
 export type FeatureGroup = { group: string; features: Feature[] };
 export type SymbolCoverage = { symbol: string; rows: number; first: string; last: string };
 export type FeatureTable = { table: string; groups: FeatureGroup[]; symbols: SymbolCoverage[] };
@@ -31,6 +42,8 @@ export type FeatureStats = {
   current: number | null;
   percentile: number | null;
   zscore: number | null;
+  peer_rank: number | null;
+  peer_zscore: number | null;
   mean: number | null;
   std: number | null;
   min: number | null;
@@ -59,7 +72,8 @@ export type StatsReport = {
 };
 export type Standing = [
   value: number | null,
-  peerPercentile: number | null,
+  peerRank: number | null,
+  peerZscore: number | null,
   percentile: number | null,
   zscore: number | null,
 ];
@@ -81,7 +95,7 @@ const features = z
   .min(1)
   .max(64)
   .optional()
-  .describe("Full feature column names to read; overrides group");
+  .describe("Full feature or peer column names to read; overrides group");
 export const asOf = z.iso
   .datetime({ offset: true })
   .optional()
@@ -133,7 +147,11 @@ export const compareShape = {
     .max(MAX_SYMBOLS)
     .optional()
     .describe("Symbols to compare; omit for every symbol of the table"),
-  sort_by: z.string().min(1).optional().describe("Feature column to sort by; omit to sort by symbol"),
+  sort_by: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("A compared feature column, or one of its peer columns, to sort by; omit to sort by symbol"),
   order: z.enum(["desc", "asc"]).default("desc").describe("Sort order of sort_by"),
   limit: z.coerce
     .number()
@@ -183,19 +201,46 @@ export async function featureTableNames(): Promise<string[]> {
   return rows.map((row) => row.table_name);
 }
 
-export async function featuresOf(name: string): Promise<Feature[]> {
+async function columnsOf(name: string): Promise<Column[]> {
   if (!(await featureTableNames()).includes(name)) throw new InputError(`Unknown feature table: ${name}`);
-  const columns = await query<{ column_name: string; column_type: string }>(`DESCRIBE ${qualified(name)}`);
-  return columns
-    .filter((column) => column.column_name.includes(GROUP_SEPARATOR) && NUMERIC_TYPE.test(column.column_type))
-    .map((column) => ({
-      name: column.column_name,
-      term: featureTerm(column.column_name),
-      group: column.column_name.slice(0, column.column_name.indexOf(GROUP_SEPARATOR)),
-      type: column.column_type,
-      description: describeFeature(column.column_name),
-    }));
+  const described = await query<{ column_name: string; column_type: string }>(`DESCRIBE ${qualified(name)}`);
+  const numeric = described.filter(
+    (column) => column.column_name.includes(GROUP_SEPARATOR) && NUMERIC_TYPE.test(column.column_type),
+  );
+  const names = new Set(numeric.map((column) => column.column_name));
+  const twin = (base: string, suffix: string) => (names.has(base + suffix) ? base + suffix : null);
+  const peerOf = (column: string) =>
+    Object.values(PEER_SUFFIXES)
+      .filter((suffix) => column.endsWith(suffix))
+      .map((suffix) => column.slice(0, -suffix.length))
+      .find((base) => names.has(base)) ?? null;
+  return numeric.map(({ column_name: column, column_type: type }) => {
+    const rank = twin(column, PEER_SUFFIXES.rank);
+    const zscore = twin(column, PEER_SUFFIXES.zscore);
+    return {
+      name: column,
+      term: featureTerm(column),
+      group: column.slice(0, column.indexOf(GROUP_SEPARATOR)),
+      type,
+      description: describeFeature(column),
+      peers: rank || zscore ? { rank, zscore } : null,
+      peerOf: peerOf(column),
+    };
+  });
 }
+
+const featureOf = ({ peerOf: _, ...feature }: Column): Feature => feature;
+
+export const featureColumns = async (name: string) => (await columnsOf(name)).map((column) => column.name);
+
+export const featuresOf = async (name: string) =>
+  (await columnsOf(name)).filter((column) => column.peerOf == null).map(featureOf);
+
+const withPeers = (features: Feature[]) => [
+  ...new Set(
+    features.flatMap((feature) => [feature.name, feature.peers?.rank, feature.peers?.zscore].filter((name) => name != null)),
+  ),
+];
 
 export async function coverageIn(relation: string): Promise<SymbolCoverage[]> {
   return query<SymbolCoverage>(
@@ -224,12 +269,13 @@ export async function listFeatureTables(): Promise<FeatureTable[]> {
 }
 
 async function selected(selection: Columns): Promise<Feature[]> {
-  const all = await featuresOf(selection.table);
+  const columns = await columnsOf(selection.table);
   if (selection.features) {
-    const unknown = selection.features.filter((name) => !all.some((feature) => feature.name === name));
+    const unknown = selection.features.filter((name) => !columns.some((column) => column.name === name));
     if (unknown.length) throw new InputError(`Unknown features in ${selection.table}: ${unknown.join(", ")}`);
-    return all.filter((feature) => selection.features!.includes(feature.name));
+    return columns.filter((column) => selection.features!.includes(column.name)).map(featureOf);
   }
+  const all = columns.filter((column) => column.peerOf == null).map(featureOf);
   if (!selection.group) return all;
   const inGroup = all.filter((feature) => feature.group === selection.group);
   if (!inGroup.length) throw new InputError(`Unknown feature group in ${selection.table}: ${selection.group}`);
@@ -245,10 +291,10 @@ export const barWindow = ({ symbol, from, as_of }: BarWindow) => ({
 });
 
 export async function latestFeatures(selection: Selection & { limit: number }): Promise<LatestFeatures> {
-  const columns = await selected(selection);
+  const columns = withPeers(await selected(selection));
   const { where, values } = barWindow(selection);
   const rows = await query<FeatureRow>(
-    `SELECT ${isoOf("source.ts")} AS ts, ${columns.map((feature) => finite(feature.name)).join(", ")}
+    `SELECT ${isoOf("source.ts")} AS ts, ${columns.map(finite).join(", ")}
      FROM ${qualified(selection.table)} AS source
      WHERE ${where}
      ORDER BY source.ts DESC LIMIT $limit`,
@@ -296,7 +342,12 @@ type StatsRow = {
   quantiles: (number | null)[] | null;
   percentile: number | null;
   recent: (number | null)[] | null;
+  peer_rank: number | null;
+  peer_zscore: number | null;
 };
+
+const newestOf = (column: string | null | undefined) =>
+  column ? `max(CASE WHEN recency = 1 THEN ${identifier(column)} END)` : "NULL::DOUBLE";
 
 export async function featureStats(selection: Selection & { lookback: number }): Promise<StatsReport> {
   const columns = await selected(selection);
@@ -310,13 +361,14 @@ export async function featureStats(selection: Selection & { lookback: number }):
               avg(${value}) AS mean, stddev_samp(${value}) AS std, min(${value}) AS min, max(${value}) AS max,
               quantile_cont(${value}, [${QUANTILES.join(", ")}]) AS quantiles,
               avg((${value} <= (SELECT ${value} FROM recent WHERE recency = 1))::INTEGER) AS percentile,
-              list(${value} ORDER BY recency) FILTER (WHERE recency <= ${RECENT_VALUES}) AS recent
+              list(${value} ORDER BY recency) FILTER (WHERE recency <= ${RECENT_VALUES}) AS recent,
+              ${newestOf(feature.peers?.rank)} AS peer_rank, ${newestOf(feature.peers?.zscore)} AS peer_zscore
             FROM recent`;
   });
   const rows = await query<StatsRow>(
     `WITH recent AS (
        SELECT source.ts AS ts, row_number() OVER (ORDER BY source.ts DESC) AS recency,
-              ${columns.map((feature) => finite(feature.name)).join(", ")}
+              ${withPeers(columns).map(finite).join(", ")}
        FROM ${qualified(selection.table)} AS source
        WHERE ${where}
        ORDER BY source.ts DESC LIMIT $lookback
@@ -342,6 +394,8 @@ export async function featureStats(selection: Selection & { lookback: number }):
         current: rounded(row.current),
         percentile: rounded(row.percentile),
         zscore: rounded(zscore),
+        peer_rank: rounded(row.peer_rank),
+        peer_zscore: rounded(row.peer_zscore),
         mean: rounded(row.mean),
         std: rounded(row.std),
         min: rounded(row.min),
@@ -360,27 +414,29 @@ export async function featureStats(selection: Selection & { lookback: number }):
 
 type ComparedRow = { symbol: string; as_of: string; time: number } & Record<string, number | null>;
 
-const shareAtOrBelow = (sorted: number[], value: number) => {
-  let low = 0;
-  let high = sorted.length;
-  while (low < high) {
-    const middle = (low + high) >> 1;
-    if (sorted[middle] <= value) low = middle + 1;
-    else high = middle;
-  }
-  return low / sorted.length;
-};
+const valueOrNull = (column: string | null | undefined, alias: string) =>
+  `${column ? finiteValue(column) : "NULL::DOUBLE"} AS ${alias}`;
 
 export async function compareSymbols(selection: CompareInput): Promise<Comparison> {
   const columns = await selected(selection);
-  const sortColumn = selection.sort_by == null ? null : columns.findIndex((feature) => feature.name === selection.sort_by);
-  if (sortColumn === -1) throw new InputError(`sort_by is not among the compared features: ${selection.sort_by}`);
+  const sortKeys = columns.flatMap((feature, position) =>
+    [feature.name, feature.peers?.rank, feature.peers?.zscore].flatMap((name, part) => (name ? [{ name, position, part }] : [])),
+  );
+  const sortKey = selection.sort_by == null ? null : sortKeys.find((key) => key.name === selection.sort_by);
+  if (sortKey === undefined) throw new InputError(`sort_by is not among the compared features: ${selection.sort_by}`);
 
   const rows = await query<ComparedRow>(
     `WITH recent AS (
        SELECT source.symbol AS symbol, source.ts AS ts,
               row_number() OVER (PARTITION BY source.symbol ORDER BY source.ts DESC) AS recency,
-              ${columns.map((feature, position) => `${finiteValue(feature.name)} AS f${position}`).join(", ")}
+              ${columns
+                .map(
+                  (feature, position) =>
+                    `${valueOrNull(feature.name, `f${position}`)}, ` +
+                    `${valueOrNull(feature.peers?.rank, `r${position}`)}, ` +
+                    `${valueOrNull(feature.peers?.zscore, `z${position}`)}`,
+                )
+                .join(", ")}
        FROM ${qualified(selection.table)} AS source
        WHERE true
          ${selection.symbols ? "AND list_contains($symbols, source.symbol)" : ""}
@@ -395,6 +451,8 @@ export async function compareSymbols(selection: CompareInput): Promise<Compariso
               .map(
                 (_, position) =>
                   `any_value(newest.f${position}) AS current${position},
+                   any_value(newest.r${position}) AS rank${position},
+                   any_value(newest.z${position}) AS spread${position},
                    avg((recent.f${position} <= newest.f${position})::INTEGER) AS percentile${position},
                    avg(recent.f${position}) AS mean${position},
                    stddev_samp(recent.f${position}) AS std${position}`,
@@ -415,31 +473,25 @@ export async function compareSymbols(selection: CompareInput): Promise<Compariso
 
   const newest = Math.max(...rows.map((row) => row.time));
   const isActive = (row: ComparedRow) => newest - row.time <= INACTIVE_AFTER_DAYS * SECONDS_PER_DAY;
-  const active = rows.filter(isActive);
-  const peers = columns.map((_, position) =>
-    active
-      .map((row) => row[`current${position}`])
-      .filter((value) => value != null)
-      .sort((a, b) => a - b),
-  );
-  const compared = active.map((row) => ({
+  const compared = rows.filter(isActive).map((row) => ({
     symbol: row.symbol,
     as_of: row.as_of,
     standings: columns.map((_, position): Standing => {
       const current = row[`current${position}`];
       return [
         rounded(current, COMPARED_DIGITS),
-        current == null ? null : rounded(shareAtOrBelow(peers[position], current), COMPARED_DIGITS),
+        rounded(row[`rank${position}`], COMPARED_DIGITS),
+        rounded(row[`spread${position}`], COMPARED_DIGITS),
         rounded(row[`percentile${position}`], COMPARED_DIGITS),
         rounded(zscoreOf(current, row[`mean${position}`], row[`std${position}`]), COMPARED_DIGITS),
       ];
     }),
   }));
-  if (sortColumn != null) {
+  if (sortKey) {
     const direction = selection.order === "asc" ? 1 : -1;
     compared.sort((left, right) => {
-      const [a] = left.standings[sortColumn];
-      const [b] = right.standings[sortColumn];
+      const a = left.standings[sortKey.position][sortKey.part];
+      const b = right.standings[sortKey.position][sortKey.part];
       if (a == null || b == null) return (a == null ? 1 : 0) - (b == null ? 1 : 0);
       return (a - b) * direction;
     });

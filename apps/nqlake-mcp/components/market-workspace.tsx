@@ -86,7 +86,9 @@ export function MarketWorkspace({ symbol: requested }: { symbol: string }) {
     if (!suggestionSettled) return NO_FEATURES;
     const cited = catalog.filter(
       (feature) =>
-        suggestion?.features.includes(feature.name) && suggestion.sources.some((read) => read.table === feature.table),
+        [feature.name, feature.peers?.rank, feature.peers?.zscore].some(
+          (name) => name != null && suggestion?.features.includes(name),
+        ) && suggestion?.sources.some((read) => read.table === feature.table),
     );
     return cited.length ? cited : catalog.slice(0, DEFAULT_FEATURE_COUNT);
   }, [chosenKeys, catalog, suggestionSettled, suggestion]);

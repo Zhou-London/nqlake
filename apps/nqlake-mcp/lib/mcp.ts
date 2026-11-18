@@ -22,16 +22,19 @@ A feature table covers many symbols, about 100 US equities and ETFs.
 Workflow for writing suggestions:
 1. list_feature_tables shows every feature table, its feature groups and the symbols it covers.
 2. For each table, call compare_symbols. It returns every active symbol at once and places each feature value
-   among the other symbols (peer percentile) and inside the symbol's own history (percentile, z-score).
+   among the other symbols (peer rank, peer z-score) and inside the symbol's own history (percentile, z-score).
    Use sort_by and limit to read the extremes of one feature. Pick the symbols whose features stand out.
 3. For each picked symbol, call get_feature_stats for the detail of its own history. Call get_latest_features
    only when the order of the newest bars matters. Call get_ohlcv for the prices behind them.
 4. Call write_suggestions once, with one suggestion per picked symbol. Pass every feature table you relied on in
    sources, with the as_of value the tool returned for that symbol, and the feature columns the reasoning cites in
-   features. Symbols end their bars at different times: take as_of from the symbol's own entry, not from the table.
+   features; a peer column may be cited too. Symbols end their bars at different times: take as_of from the symbol's
+   own entry, not from the table.
 
 A symbol keeps one suggestion: writing replaces the earlier one and no history is kept.
 Every tool except write_suggestions is read-only. Feature columns are named <group>.<feature>.
+The table stores the peer rank and the peer z-score of a feature in its own columns, listed in the feature's peers.
+They place the value among the symbols with a bar closing at the same time.
 Each feature has a term, its name in plain words. Name features by their terms in the title and body of a suggestion.
 Pass column names only in features.
 Every bar, OHLCV or feature, is stamped with its closing time.`;
@@ -62,7 +65,9 @@ export function featureServer(access: Access): McpServer {
     "list_feature_tables",
     {
       title: "List feature tables",
-      description: "Lists every feature table with its feature groups, feature terms and descriptions, and symbol coverage.",
+      description:
+        "Lists every feature table with its feature groups, feature terms and descriptions, the peer columns of each " +
+        "feature, and symbol coverage.",
       annotations: READ_ONLY,
     },
     () => attempt(listFeatureTables),
@@ -72,7 +77,9 @@ export function featureServer(access: Access): McpServer {
     "describe_feature_table",
     {
       title: "Describe a feature table",
-      description: "Returns the feature groups, feature terms and descriptions, and symbol coverage of one feature table.",
+      description:
+        "Returns the feature groups, feature terms and descriptions, the peer columns of each feature, and symbol " +
+        "coverage of one feature table.",
       inputSchema: tableShape,
       annotations: READ_ONLY,
     },
@@ -85,8 +92,10 @@ export function featureServer(access: Access): McpServer {
       title: "Compare symbols",
       description:
         "Compares the symbols of one feature table on their newest bars. Each feature of each symbol is " +
-        "[value, peer percentile, percentile in the symbol's own history, z-score in the symbol's own history]. " +
-        "The peer percentile is the share of compared symbols whose value is at or below this one. " +
+        "[value, peer rank, peer z-score, percentile in the symbol's own history, z-score in the symbol's own history]. " +
+        "The peer rank (0 for the lowest value, 1 for the highest, tied values sharing the mean of their ranks) and the " +
+        "peer z-score come from the table's peer columns and place the value among the symbols with a bar closing at " +
+        "the same time; they are null for a feature without peer columns. sort_by a peer column sorts by it. " +
         "Each symbol carries as_of, the time of its newest bar read. Symbols without a bar in the " +
         `${INACTIVE_AFTER_DAYS} days before the newest bar of the table are listed in inactive and left out.`,
       inputSchema: compareShape,
@@ -101,7 +110,8 @@ export function featureServer(access: Access): McpServer {
       title: "Summarize features",
       description:
         "Summarizes each feature of one symbol over its newest bars: term, current value, percentile and z-score of " +
-        "the current value, mean, standard deviation, quantiles, and the newest values (newest first). " +
+        "the current value, peer rank and peer z-score of the current value, mean, standard deviation, quantiles, " +
+        "and the newest values (newest first). " +
         "Returns as_of, the time of the newest bar read.",
       inputSchema: statsShape,
       annotations: READ_ONLY,
@@ -114,7 +124,8 @@ export function featureServer(access: Access): McpServer {
     {
       title: "Read the newest bars",
       description:
-        "Returns the newest bars of one symbol, newest first, at most 200. Returns as_of, the time of the newest bar read.",
+        "Returns the newest bars of one symbol, newest first, at most 200. Each feature comes with its peer columns. " +
+        "Returns as_of, the time of the newest bar read.",
       inputSchema: latestShape,
       annotations: READ_ONLY,
     },

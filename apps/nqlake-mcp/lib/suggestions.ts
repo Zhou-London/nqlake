@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { config } from "./config";
-import { coverageOf, featuresOf, featureTableNames, InputError, type SymbolCoverage } from "./features";
+import { coverageOf, featureColumns, featureTableNames, InputError, type SymbolCoverage } from "./features";
 import { MAX_SYMBOLS } from "./limits";
 
 const source = z.object({
@@ -138,7 +138,7 @@ export async function writeSuggestions(input: { model: string; suggestions: z.in
 
   const featureNames = new Map(
     await Promise.all(
-      [...new Set(tables)].map(async (table) => [table, (await featuresOf(table)).map((feature) => feature.name)] as const),
+      [...new Set(tables)].map(async (table) => [table, await featureColumns(table)] as const),
     ),
   );
   for (const item of input.suggestions) {

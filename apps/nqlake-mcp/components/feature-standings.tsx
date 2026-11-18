@@ -14,7 +14,7 @@ import {
   TooltipTrigger,
   trendOf,
 } from "@nowquant/nqui";
-import type { Comparison, FeatureSeries, FeatureStats, StatsReport } from "@/lib/features";
+import type { FeatureSeries, FeatureStats, StatsReport } from "@/lib/features";
 import { decimalsFor, scaled, signed } from "@/lib/format";
 import { featureKey, useJsonList } from "@/lib/use-json";
 
@@ -33,21 +33,12 @@ type Standing = FeatureStats & {
   change: number | null;
   decimals: number;
   trend: number[];
-  peers: number | null;
 };
 
-function standingsOf(symbol: string, reports: StatsReport[], recent: FeatureSeries[], compared: Comparison[]): Standing[] {
+function standingsOf(reports: StatsReport[], recent: FeatureSeries[]): Standing[] {
   const trends = new Map(
     recent.flatMap(({ table, series }) =>
       series.map(({ feature, points }) => [featureKey(table, feature), points.map((point) => point[1])]),
-    ),
-  );
-  const peers = new Map(
-    compared.flatMap(({ table, symbols }) =>
-      Object.entries(symbols.find((entry) => entry.symbol === symbol)?.features ?? {}).map(([feature, standing]) => [
-        featureKey(table, feature),
-        standing[1],
-      ]),
     ),
   );
   return reports.flatMap((report) =>
@@ -60,7 +51,6 @@ function standingsOf(symbol: string, reports: StatsReport[], recent: FeatureSeri
         change: newest != null && previous != null ? newest - previous : null,
         decimals: decimalsFor(feature.std),
         trend: trends.get(key) ?? [],
-        peers: peers.get(key) ?? null,
       };
     }),
   );
@@ -83,10 +73,9 @@ export function FeatureStandings({
   const selection = `symbol=${encodeURIComponent(symbol)}`;
   const stats = useJsonList<StatsReport>(endpoints.map((endpoint) => `${endpoint}/stats?${selection}&lookback=${lookback}`));
   const recent = useJsonList<FeatureSeries>(endpoints.map((endpoint) => `${endpoint}/series?${selection}&limit=${TREND_BARS}`));
-  const compared = useJsonList<Comparison>(endpoints.map((endpoint) => `${endpoint}/compare?lookback=${lookback}`));
   const standings = useMemo(
-    () => (stats.data ? standingsOf(symbol, stats.data, recent.data ?? [], compared.data ?? []) : NO_STANDINGS),
-    [symbol, stats.data, recent.data, compared.data],
+    () => (stats.data ? standingsOf(stats.data, recent.data ?? []) : NO_STANDINGS),
+    [stats.data, recent.data],
   );
 
   useEffect(() => {
@@ -102,6 +91,27 @@ export function FeatureStandings({
       numeric: true,
       align: "end",
       size: 104,
+    });
+    const zscore = (id: "zscore" | "peer_zscore", header: string): DataGridColumn<Standing> => ({
+      id,
+      header,
+      accessorFn: (row) => row[id],
+      cell: ({ row }) => (
+        <span className={row[id] != null && Math.abs(row[id]) >= EXTREME_ZSCORE ? "font-semibold text-warning-text" : undefined}>
+          {signed(row[id], 2)}
+        </span>
+      ),
+      numeric: true,
+      align: "end",
+      size: 104,
+    });
+    const share = (id: "percentile" | "peer_rank", header: string): DataGridColumn<Standing> => ({
+      id,
+      header,
+      accessorFn: (row) => row[id],
+      size: 150,
+      cell: ({ row }) =>
+        row[id] == null ? "—" : <ProgressBar aria-label={header} size="sm" showValue value={row[id] * 100} className="w-28" />,
     });
     return [
       {
@@ -137,43 +147,10 @@ export function FeatureStandings({
         align: "end",
         size: 104,
       },
-      {
-        id: "percentile",
-        header: "Percentile",
-        accessorFn: (row) => row.percentile,
-        size: 150,
-        cell: ({ row }) =>
-          row.percentile == null ? (
-            "—"
-          ) : (
-            <ProgressBar aria-label="Percentile" size="sm" showValue value={row.percentile * 100} className="w-28" />
-          ),
-      },
-      {
-        id: "peers",
-        header: "Peer percentile",
-        accessorFn: (row) => row.peers,
-        size: 150,
-        cell: ({ row }) =>
-          row.peers == null ? (
-            "—"
-          ) : (
-            <ProgressBar aria-label="Peer percentile" size="sm" showValue value={row.peers * 100} className="w-28" />
-          ),
-      },
-      {
-        id: "zscore",
-        header: "Z-score",
-        accessorFn: (row) => row.zscore,
-        cell: ({ row }) => (
-          <span className={row.zscore != null && Math.abs(row.zscore) >= EXTREME_ZSCORE ? "font-semibold text-warning-text" : undefined}>
-            {signed(row.zscore, 2)}
-          </span>
-        ),
-        numeric: true,
-        align: "end",
-        size: 104,
-      },
+      share("percentile", "Percentile"),
+      zscore("zscore", "Z-score"),
+      share("peer_rank", "Peer rank"),
+      zscore("peer_zscore", "Peer Z"),
       {
         id: "trend",
         header: "Trend",
@@ -187,7 +164,7 @@ export function FeatureStandings({
     ];
   }, []);
 
-  const error = stats.error ?? recent.error ?? compared.error;
+  const error = stats.error ?? recent.error;
   return (
     <Card>
       {error && <Alert color="warning" title={error} />}

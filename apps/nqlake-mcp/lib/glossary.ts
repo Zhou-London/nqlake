@@ -41,7 +41,32 @@ const entries: Record<string, Entry> = {
   },
 };
 
-export const describeFeature = (column: string): string | null => entries[column]?.description ?? null;
+const peerMeasures = [
+  {
+    suffix: "_rank",
+    term: "peer rank",
+    description:
+      "Rank among the symbols with a bar closing at the same time, from 0 for the lowest value to 1 for the highest. " +
+      "Tied values share the mean of their ranks. Empty when too few symbols have a value",
+  },
+  {
+    suffix: "_z",
+    term: "peer z-score",
+    description:
+      "Distance from the mean of the symbols with a bar closing at the same time, in their standard deviations. " +
+      "0 when all values are equal. Empty when too few symbols have a value",
+  },
+];
+
+function entryOf(column: string): Entry | undefined {
+  if (entries[column]) return entries[column];
+  for (const measure of peerMeasures) {
+    const base = column.endsWith(measure.suffix) ? entries[column.slice(0, -measure.suffix.length)] : undefined;
+    if (base) return { term: `${base.term} ${measure.term}`, description: measure.description };
+  }
+}
+
+export const describeFeature = (column: string): string | null => entryOf(column)?.description ?? null;
 
 export const featureTerm = (column: string): string =>
-  entries[column]?.term ?? column.slice(column.indexOf(GROUP_SEPARATOR) + 1);
+  entryOf(column)?.term ?? column.slice(column.indexOf(GROUP_SEPARATOR) + 1);

@@ -91,7 +91,7 @@ function sorted(thumbnails: Thumbnail[], sortBy: string, descending: boolean): T
 }
 
 function FeatureReadout({ feature, standing }: { feature: Readout; standing: Standing | undefined }) {
-  const [value, peers, , zscore] = standing ?? [];
+  const [value, peerRank, , , zscore] = standing ?? [];
   const extreme = zscore != null && Math.abs(zscore) >= EXTREME_ZSCORE;
   return (
     <div className="flex items-center gap-3 text-xs">
@@ -101,14 +101,14 @@ function FeatureReadout({ feature, standing }: { feature: Readout; standing: Sta
       <span className={`w-14 text-right tabular-nums ${extreme ? "font-semibold text-warning-text" : "text-foreground"}`}>
         {scaled(value, feature.decimals)}
       </span>
-      {peers == null ? (
+      {peerRank == null ? (
         <span className="w-12" />
       ) : (
         <ProgressBar
-          aria-label={`${feature.term} peer percentile`}
+          aria-label={`${feature.term} peer rank`}
           size="sm"
           showValue={false}
-          value={peers * 100}
+          value={peerRank * 100}
           className="w-12"
         />
       )}
